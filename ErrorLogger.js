@@ -6,7 +6,7 @@
  * DEPENDENCIES:
  * - Google Sheets tab: Error Logs
  * - ConfigService constants
- * - UtilsService for unique LOG- IDs
+ * - UtilsService for unique MIDTS-ERR IDs
  */
 
 var ErrorLogger = {
@@ -32,8 +32,8 @@ var ErrorLogger = {
       // Capture readable message from unknown error types.
       var errorMessage = (error && error.message) ? error.message : String(error || 'Unknown error');
 
-      // Uses unique ID prefix LOG- as required by project rules.
-      var logId = UtilsService.createPrefixedId_('LOG-');
+      // Use the canonical branded sequential error log ID for audit tracking.
+      var logId = UtilsService.createSequentialId_('ERROR');
 
       // Store context as JSON for easier debugging in spreadsheet.
       var contextJson = JSON.stringify(context || {});
