@@ -28,6 +28,9 @@ var ConfigService = {
   // Uses Google Sheet tab: Projects
   PROJECTS_SHEET_NAME: 'Projects',
 
+  // Uses Google Sheet tab: ID Counters
+  ID_COUNTERS_SHEET_NAME: 'ID Counters',
+
   // REQUIRED: Set this value in Settings sheet before running external email workflows.
   // Uses Brevo API key from Settings sheet: BREVO_API_KEY
   // Example: BREVO_API_KEY = "xkeysib-xxxx"
