@@ -67,6 +67,7 @@ The system is intended to manage:
     - `VEND-`
     - `PROJ-`
     - `QUOTE-`
+    - `PAY-`
     - `LOG-`
 
 ---
@@ -172,6 +173,7 @@ Potential future files:
 - `DriveService.gs`
 - `AccessControlService.gs`
 - `QuoteService.gs`
+- `PaymentService.gs`
 - `DashboardService.gs`
 - `Index.html`
 - `Styles.html`
