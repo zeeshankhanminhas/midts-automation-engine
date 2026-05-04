@@ -1,0 +1,164 @@
+<script>
+  const state = {
+    loading: false,
+    latest: null
+  };
+
+  const metricIds = {
+    leadsTotal: 'metricLeadsTotal',
+    leadsQualified: 'metricLeadsQualified',
+    quotesTotal: 'metricQuotesTotal',
+    quotesAccepted: 'metricQuotesAccepted',
+    projectsOpen: 'metricProjectsOpen',
+    vendorsApproved: 'metricVendorsApproved',
+    paymentsPending: 'metricPaymentsPending',
+    paymentsPaid: 'metricPaymentsPaid'
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('refreshButton').addEventListener('click', loadDashboard);
+    document.getElementById('leadForm').addEventListener('submit', submitLead);
+
+    document.querySelectorAll('.tab').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        activateView(tab.dataset.view);
+      });
+    });
+
+    loadDashboard();
+  });
+
+  function setLoading(isLoading) {
+    state.loading = isLoading;
+    document.getElementById('refreshButton').disabled = isLoading;
+    document.getElementById('loadStatus').textContent = isLoading ? 'Loading' : 'Ready';
+  }
+
+  function loadDashboard() {
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function (result) {
+        setLoading(false);
+        if (!result || !result.success) {
+          setStatus(result && result.message ? result.message : 'Dashboard data failed to load.', true);
+          return;
+        }
+        state.latest = result.data;
+        renderDashboard(result.data);
+        setStatus('Ready', false);
+      })
+      .withFailureHandler(function (error) {
+        setLoading(false);
+        setStatus(error && error.message ? error.message : 'Dashboard request failed.', true);
+      })
+      .getDashboardData();
+  }
+
+  function renderDashboard(data) {
+    Object.keys(metricIds).forEach(function (key) {
+      document.getElementById(metricIds[key]).textContent = data.metrics[key] || 0;
+    });
+
+    document.getElementById('refreshedAt').textContent = data.refreshedAt ? 'Updated ' + formatDate(data.refreshedAt) : '';
+
+    renderTable('leads', data.recent.leads);
+    renderTable('quotes', data.recent.quotes);
+    renderTable('projects', data.recent.projects);
+    renderTable('payments', data.recent.payments);
+    renderTable('driveLogs', data.recent.logs.drive);
+    renderTable('emailLogs', data.recent.logs.email);
+    renderTable('slackLogs', data.recent.logs.slack);
+  }
+
+  function renderTable(name, rows) {
+    const head = document.getElementById(name + 'Head');
+    const body = document.getElementById(name + 'Body');
+    const list = rows || [];
+
+    head.innerHTML = '';
+    body.innerHTML = '';
+
+    if (!list.length) {
+      body.innerHTML = '<tr><td class="empty">No rows</td></tr>';
+      return;
+    }
+
+    const fields = Object.keys(list[0]);
+    const tr = document.createElement('tr');
+    fields.forEach(function (field) {
+      const th = document.createElement('th');
+      th.textContent = field;
+      tr.appendChild(th);
+    });
+    head.appendChild(tr);
+
+    list.forEach(function (row) {
+      const bodyRow = document.createElement('tr');
+      fields.forEach(function (field) {
+        const td = document.createElement('td');
+        td.textContent = row[field] || '';
+        bodyRow.appendChild(td);
+      });
+      body.appendChild(bodyRow);
+    });
+  }
+
+  function activateView(view) {
+    document.querySelectorAll('.tab').forEach(function (tab) {
+      tab.classList.toggle('active', tab.dataset.view === view);
+    });
+    document.querySelectorAll('.table-wrap').forEach(function (wrap) {
+      wrap.classList.toggle('active', wrap.id === 'view-' + view);
+    });
+  }
+
+  function submitLead(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const payload = Object.fromEntries(new FormData(form).entries());
+
+    submitButton.disabled = true;
+    setFormStatus('Saving', false);
+
+    google.script.run
+      .withSuccessHandler(function (result) {
+        submitButton.disabled = false;
+        if (!result || !result.success) {
+          setFormStatus(result && result.message ? result.message : 'Lead was not created.', true);
+          return;
+        }
+        form.reset();
+        form.source.value = 'Dashboard';
+        setFormStatus('Created ' + (result.data && result.data.leadId ? result.data.leadId : ''), false);
+        loadDashboard();
+      })
+      .withFailureHandler(function (error) {
+        submitButton.disabled = false;
+        setFormStatus(error && error.message ? error.message : 'Lead request failed.', true);
+      })
+      .createDashboardLead(payload);
+  }
+
+  function setStatus(message, isError) {
+    const el = document.getElementById('loadStatus');
+    el.textContent = message;
+    el.classList.toggle('error', Boolean(isError));
+    el.classList.toggle('ok', !isError);
+  }
+
+  function setFormStatus(message, isError) {
+    const el = document.getElementById('formStatus');
+    el.textContent = message;
+    el.classList.toggle('error', Boolean(isError));
+    el.classList.toggle('ok', !isError);
+  }
+
+  function formatDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString();
+  }
+</script>
