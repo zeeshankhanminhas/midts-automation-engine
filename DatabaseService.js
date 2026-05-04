@@ -81,6 +81,26 @@ var DatabaseService = {
   },
 
   /**
+   * FUNCTION: ensureIdCountersSheetStructure
+   * PURPOSE: Ensure ID Counters sheet exists with fixed headers for branded sequential IDs.
+   * INPUT: none
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Creates ID Counters sheet if missing; appends missing headers only.
+   */
+  ensureIdCountersSheetStructure: function () {
+    // ===== MAIN LOGIC =====
+    try {
+      // One counter row per record type/year keeps business IDs short and sequential.
+      var requiredHeaders = ['Type', 'Year', 'Last Sequence', 'Updated At', 'Sample Format'];
+      return this.ensureSheetAndHeaders_(ConfigService.ID_COUNTERS_SHEET_NAME, requiredHeaders);
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('DatabaseService.ensureIdCountersSheetStructure', error);
+      return { success: false, message: 'Failed to verify ID Counters sheet structure.' };
+    }
+  },
+
+  /**
    * FUNCTION: ensureLeadsSheetStructure
    * PURPOSE: Ensure Leads sheet exists with fixed headers for Stage 2 lead intake.
    * INPUT: none
