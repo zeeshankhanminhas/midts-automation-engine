@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <?!= include('Styles'); ?>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">MIDTS Automation Engine</p>
+        <h1>Admin Dashboard</h1>
+      </div>
+      <button class="icon-button" type="button" id="refreshButton" aria-label="Refresh dashboard" title="Refresh dashboard">
+        <span aria-hidden="true">Refresh</span>
+      </button>
+    </header>
+
+    <section class="metrics" aria-label="Pipeline summary">
+      <article class="metric"><span>Leads</span><strong id="metricLeadsTotal">0</strong></article>
+      <article class="metric"><span>Qualified</span><strong id="metricLeadsQualified">0</strong></article>
+      <article class="metric"><span>Quotes</span><strong id="metricQuotesTotal">0</strong></article>
+      <article class="metric"><span>Accepted</span><strong id="metricQuotesAccepted">0</strong></article>
+      <article class="metric"><span>Open Projects</span><strong id="metricProjectsOpen">0</strong></article>
+      <article class="metric"><span>Approved Vendors</span><strong id="metricVendorsApproved">0</strong></article>
+      <article class="metric"><span>Pending Payments</span><strong id="metricPaymentsPending">0</strong></article>
+      <article class="metric"><span>Paid</span><strong id="metricPaymentsPaid">0</strong></article>
+    </section>
+
+    <section class="workspace">
+      <aside class="panel intake-panel" aria-label="Manual lead intake">
+        <div class="panel-heading">
+          <h2>Manual Lead</h2>
+          <p id="formStatus" role="status"></p>
+        </div>
+        <form id="leadForm" autocomplete="off">
+          <label>
+            <span>Full name</span>
+            <input name="fullName" required>
+          </label>
+          <label>
+            <span>Email</span>
+            <input name="email" type="email" required>
+          </label>
+          <label>
+            <span>Company</span>
+            <input name="company" required>
+          </label>
+          <label>
+            <span>Project type</span>
+            <input name="projectType" required>
+          </label>
+          <label>
+            <span>Source</span>
+            <input name="source" value="Dashboard">
+          </label>
+          <label>
+            <span>Notes</span>
+            <textarea name="notes" rows="4"></textarea>
+          </label>
+          <button class="primary" type="submit">Create Lead</button>
+        </form>
+      </aside>
+
+      <section class="tables" aria-label="Operational tables">
+        <nav class="tabs" aria-label="Dashboard views">
+          <button type="button" class="tab active" data-view="leads">Leads</button>
+          <button type="button" class="tab" data-view="quotes">Quotes</button>
+          <button type="button" class="tab" data-view="projects">Projects</button>
+          <button type="button" class="tab" data-view="payments">Payments</button>
+          <button type="button" class="tab" data-view="logs">Logs</button>
+        </nav>
+
+        <div class="table-wrap active" id="view-leads">
+          <table><thead id="leadsHead"></thead><tbody id="leadsBody"></tbody></table>
+        </div>
+        <div class="table-wrap" id="view-quotes">
+          <table><thead id="quotesHead"></thead><tbody id="quotesBody"></tbody></table>
+        </div>
+        <div class="table-wrap" id="view-projects">
+          <table><thead id="projectsHead"></thead><tbody id="projectsBody"></tbody></table>
+        </div>
+        <div class="table-wrap" id="view-payments">
+          <table><thead id="paymentsHead"></thead><tbody id="paymentsBody"></tbody></table>
+        </div>
+        <div class="table-wrap logs-view" id="view-logs">
+          <h3>Drive</h3>
+          <table><thead id="driveLogsHead"></thead><tbody id="driveLogsBody"></tbody></table>
+          <h3>Email</h3>
+          <table><thead id="emailLogsHead"></thead><tbody id="emailLogsBody"></tbody></table>
+          <h3>Slack</h3>
+          <table><thead id="slackLogsHead"></thead><tbody id="slackLogsBody"></tbody></table>
+        </div>
+      </section>
+    </section>
+
+    <footer class="statusline">
+      <span id="loadStatus">Loading</span>
+      <span id="refreshedAt"></span>
+    </footer>
+  </main>
+
+  <?!= include('ClientJS'); ?>
+</body>
+</html>
