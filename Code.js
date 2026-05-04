@@ -32,6 +32,12 @@ function runStage1Validation() {
       return errorLogResult;
     }
 
+    // Validate ID Counters tab so all new records can use branded sequential MIDTS IDs.
+    var idCountersResult = DatabaseService.ensureIdCountersSheetStructure();
+    if (!idCountersResult.success) {
+      return idCountersResult;
+    }
+
     // Validate that required setting values are present (can be Script Properties fallback).
     var configResult = ConfigService.validateRequiredSettings();
 
@@ -40,7 +46,8 @@ function runStage1Validation() {
       success: true,
       message: 'Stage 1 validation completed successfully.',
       data: {
-        requiredSheets: ['Settings', 'Error Logs'],
+        requiredSheets: ['Settings', 'Error Logs', 'ID Counters'],
+        idCountersValidation: idCountersResult,
         settingsValidation: configResult
       }
     };
@@ -73,14 +80,14 @@ function runStage1SmokeTest() {
       return validation;
     }
 
-    // Step 2: verify LOG- prefix generation for auditing requirements.
-    var testLogId = UtilsService.createPrefixedId_('LOG-');
-    var hasLogPrefix = String(testLogId).indexOf('LOG-') === 0;
+    // Step 2: verify branded sequential error log ID generation for auditing requirements.
+    var testLogId = UtilsService.createSequentialId_('ERROR');
+    var hasLogPrefix = String(testLogId).indexOf('MIDTS-ERR-') === 0;
 
     if (!hasLogPrefix) {
       return {
         success: false,
-        message: 'Smoke test failed: LOG- prefix was not generated correctly.',
+        message: 'Smoke test failed: MIDTS-ERR prefix was not generated correctly.',
         data: { generatedId: testLogId }
       };
     }
@@ -672,11 +679,13 @@ function runStage4VendorEligibilityTest() {
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = spreadsheet.getSheetByName(ConfigService.VENDORS_SHEET_NAME);
 
-    sheet.appendRow(['VEND-INELIGIBLE', 'Ineligible Vendor', 'bad@example.com', 'No', 'No', 'Pending', '']);
-    sheet.appendRow(['VEND-ELIGIBLE', 'Eligible Vendor', 'good@example.com', 'Yes', 'Yes', 'Approved', '']);
+    var ineligibleVendorId = UtilsService.createSequentialId_('VENDOR');
+    var eligibleVendorId = UtilsService.createSequentialId_('VENDOR');
+    sheet.appendRow([ineligibleVendorId, 'Ineligible Vendor', 'bad@example.com', 'No', 'No', 'Pending', '']);
+    sheet.appendRow([eligibleVendorId, 'Eligible Vendor', 'good@example.com', 'Yes', 'Yes', 'Approved', '']);
 
-    var blocked = VendorService.assignVendorToLead(lead.data.leadId, 'VEND-INELIGIBLE');
-    var allowed = VendorService.assignVendorToLead(lead.data.leadId, 'VEND-ELIGIBLE');
+    var blocked = VendorService.assignVendorToLead(lead.data.leadId, ineligibleVendorId);
+    var allowed = VendorService.assignVendorToLead(lead.data.leadId, eligibleVendorId);
 
     var pass = blocked.success === false && allowed.success === true;
 
@@ -727,7 +736,8 @@ function runStage4ProjectCreationTest() {
 
     DatabaseService.ensureVendorsSheetStructure();
     var vendorSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
-    vendorSheet.appendRow(['VEND-PROJ-ELIGIBLE', 'Project Eligible Vendor', 'proj-vendor@example.com', 'Yes', 'Yes', 'Approved', '']);
+    var projectVendorId = UtilsService.createSequentialId_('VENDOR');
+    vendorSheet.appendRow([projectVendorId, 'Project Eligible Vendor', 'proj-vendor@example.com', 'Yes', 'Yes', 'Approved', '']);
 
     var quote = QuoteService.createQuoteForLead({
       leadId: lead.data.leadId,
@@ -747,7 +757,7 @@ function runStage4ProjectCreationTest() {
 
     var project = ProjectService.createProjectFromQuote({
       leadId: lead.data.leadId,
-      vendorId: 'VEND-PROJ-ELIGIBLE',
+      vendorId: projectVendorId,
       quoteId: quote.data.quoteId,
       notes: 'Stage 4 project creation test.'
     });
