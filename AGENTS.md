@@ -62,13 +62,42 @@ The system is intended to manage:
 8. Prefer simple, reliable code over clever abstractions.
 9. Do not delete or overwrite existing user data unless explicitly instructed.
 10. When creating sheets, preserve existing rows and only add missing headers.
-11. Use unique ID prefixes:
-    - `LEAD-`
-    - `VEND-`
-    - `PROJ-`
-    - `QUOTE-`
-    - `PAY-`
-    - `LOG-`
+11. Use branded, unique, sequential MIDTS IDs for business records and logs.
+
+### ID Standard
+All new production records must use short, human-readable, branded IDs. The standard format is:
+
+```text
+MIDTS-{TYPE}-{YY}{SEQUENCE}
+```
+
+Where:
+- `MIDTS` is the fixed brand prefix.
+- `{TYPE}` is the short record type code.
+- `{YY}` is the two-digit calendar year, for example `26` for 2026.
+- `{SEQUENCE}` is a zero-padded sequential number, normally 4 digits at minimum.
+
+Required business record formats:
+- Lead: `MIDTS-L-260001`
+- Vendor: `MIDTS-V-260001`
+- Project: `MIDTS-P-260001`
+- Quote: `MIDTS-Q-260001`
+- Payment: `MIDTS-PAY-260001`
+
+Required log record formats:
+- Email Log: `MIDTS-ELOG-260001`
+- Slack Log: `MIDTS-SLOG-260001`
+- Drive Access Log: `MIDTS-DLOG-260001`
+- Error Log: `MIDTS-ERR-260001`
+- General/System Log: `MIDTS-LOG-260001`
+
+ID generation rules:
+1. Generate IDs from one central utility function, not separately inside each service.
+2. Use one independent sequence per record type, so quote, lead, project, payment, vendor, and log IDs do not share one global counter.
+3. Store counters in a dedicated sheet such as `ID Counters`, or another explicit durable counter store.
+4. Existing historical IDs must remain valid and must not be rewritten unless explicitly requested.
+5. New stages and new records should use the branded sequential format going forward.
+6. IDs that appear on templates, emails, PDFs, project folders, Slack alerts, and dashboard views should use the same canonical value.
 
 ---
 
