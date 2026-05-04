@@ -60,8 +60,8 @@ var ProjectService = {
         return { success: false, message: 'Projects sheet not found.' };
       }
 
-      // Uses unique ID prefix PROJ- for project entities.
-      var projectId = UtilsService.createPrefixedId_('PROJ-');
+      // Use the canonical branded sequential project ID for folders and tracking.
+      var projectId = UtilsService.createSequentialId_('PROJECT');
       sheet.appendRow([
         projectId,
         leadId,
