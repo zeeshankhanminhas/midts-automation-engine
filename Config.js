@@ -46,6 +46,11 @@ var ConfigService = {
   // Example: ROOT_DRIVE_FOLDER_ID = "1AbCdEfGhIjKlMnOp"
   ROOT_DRIVE_FOLDER_ID_KEY: 'ROOT_DRIVE_FOLDER_ID',
 
+  // REQUIRED: Set this value in Settings sheet before accepting public website form posts.
+  // Uses website webhook token from Settings sheet: WEBSITE_WEBHOOK_TOKEN
+  // Example: WEBSITE_WEBHOOK_TOKEN = "choose-a-private-random-token"
+  WEBSITE_WEBHOOK_TOKEN_KEY: 'WEBSITE_WEBHOOK_TOKEN',
+
   /**
    * FUNCTION: getRequiredSettingKeys
    * PURPOSE: Return the canonical list of required configuration keys.
