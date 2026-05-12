@@ -150,7 +150,7 @@ var WebsiteWebhookService = {
     // ===== MAIN LOGIC =====
     try {
       var fullName = this.cleanText_(this.getField_(payload, ['fullName', 'full_name', 'name', 'yourName']));
-      var email = this.cleanText_(this.getField_(payload, ['email', 'emailAddress', 'email_address']));
+      var email = this.cleanText_(this.getField_(payload, ['email', 'work_email', 'emailAddress', 'email_address']));
       var company = this.cleanText_(this.getField_(payload, ['company', 'companyName', 'company_name'])) || this.DEFAULT_COMPANY;
       var projectType = this.cleanText_(this.getField_(payload, ['projectType', 'project_type', 'service', 'requirement'])) || this.DEFAULT_PROJECT_TYPE;
       var source = this.cleanText_(this.getField_(payload, ['source', 'formSource'])) || this.DEFAULT_SOURCE;
@@ -291,15 +291,17 @@ var WebsiteWebhookService = {
   buildNotes_: function (payload) {
     // ===== MAIN LOGIC =====
     var lines = [];
-    var message = this.cleanText_(this.getField_(payload, ['notes', 'message', 'projectDetails', 'project_details', 'description']));
+    var message = this.cleanText_(this.getField_(payload, ['notes', 'message', 'brief_requirement', 'projectDetails', 'project_details', 'description']));
     if (message) {
       lines.push(message);
     }
 
     var contextFields = [
+      ['Timeline / Urgency', ['timeline_urgency', 'timelineUrgency', 'timeline', 'deadline', 'requiredBy']],
+      ['Files / Drawings Ready', ['files_drawings_ready', 'filesDrawingsReady', 'filesReady']],
+      ['Requirement Complexity', ['requirement_complexity', 'requirementComplexity', 'complexity']],
       ['Phone', ['phone', 'phoneNumber', 'phone_number']],
       ['Budget', ['budget', 'estimatedBudget', 'estimated_budget']],
-      ['Deadline', ['deadline', 'timeline', 'requiredBy']],
       ['Page URL', ['pageUrl', 'page_url', 'url']],
       ['Consent', ['consent', 'privacyConsent', 'privacy_consent']]
     ];
