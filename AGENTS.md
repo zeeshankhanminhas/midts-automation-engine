@@ -17,6 +17,25 @@ The system is intended to manage:
 
 ---
 
+## Business Process Overview
+The system supports the existing staged workflow while making the vendor pricing and MIDTS margin step explicit before customer quotation.
+
+Required business sequence:
+
+```text
+Lead
+→ Qualification
+→ Vendor Pricing
+→ MIDTS Margin Applied
+→ Quote Generated
+→ Payment
+→ Project
+```
+
+This sequence must enhance the existing stage-based delivery model without removing or breaking any completed stages.
+
+---
+
 ## Core Stack
 - Google Apps Script
 - Google Sheets (database)
@@ -48,6 +67,58 @@ The system is intended to manage:
 
 ---
 
+## Lead Nurture System
+Lead nurture remains part of the lead qualification workflow. Leads must be qualified before downstream vendor pricing, quote, payment, or project workflow steps proceed.
+
+---
+
+## Vendor Pricing Workflow (CRITICAL)
+Flow:
+
+```text
+Qualified Lead
+→ MIDTS approves
+→ Vendor pricing requested
+→ Vendor submits cost, ETA, notes
+→ MIDTS reviews
+→ MIDTS applies margin
+→ Final quote generated
+```
+
+Vendor pricing is an internal prerequisite for controlled customer quote generation unless MIDTS explicitly overrides the dependency.
+
+---
+
+## Pricing Logic Rules
+- Vendor cost is NOT final customer price.
+- Final price must be calculated using:
+  - Fixed margin OR
+  - Percentage markup
+
+Formulas:
+
+```text
+Customer Price = Vendor Cost + Margin
+Customer Price = Vendor Cost × Multiplier
+```
+
+System must calculate:
+- MIDTS Profit Amount
+- Final Customer Price
+
+---
+
+## Quote Dependency Rules
+Quotes must ONLY be generated when:
+- Vendor Pricing Status = Submitted
+- MIDTS Review Status = Approved for Quote
+
+System must prevent quote generation otherwise.
+
+Customer quotes must never be generated before vendor pricing review unless explicitly overridden by MIDTS.
+
+---
+
 ## Engineering Rules
 1. Use modular Apps Script files.
 2. Never hard-code secrets.
@@ -63,6 +134,7 @@ The system is intended to manage:
 9. Do not delete or overwrite existing user data unless explicitly instructed.
 10. When creating sheets, preserve existing rows and only add missing headers.
 11. Use branded, unique, sequential MIDTS IDs for business records and logs.
+12. Customer quotes must never be generated before vendor pricing review unless explicitly overridden by MIDTS.
 
 ### ID Standard
 All new production records must use short, human-readable, branded IDs. The standard format is:
@@ -171,6 +243,10 @@ Mark future-stage extensions with:
 5. Drive access must be logged when granted or removed.
 6. Files/folders must never be shared publicly unless explicitly instructed.
 7. Do not email sensitive file links until access rules are validated.
+8. Vendor must NEVER see:
+   - Final customer price
+   - MIDTS margin
+   - MIDTS profit
 
 ---
 
@@ -182,6 +258,44 @@ Requirements:
 - Do not reorder existing headers unless explicitly asked.
 - Only append missing headers.
 - Preserve existing data.
+
+### Vendor Pricing Sheet Fields
+Vendor Pricing Sheet fields:
+- Vendor Pricing ID
+- Created At
+- Lead ID
+- Vendor ID
+- Vendor Name
+- Vendor Email
+- Pricing Status
+- Vendor Cost
+- Currency
+- Vendor ETA
+- Vendor Notes
+- Submitted At
+- MIDTS Margin Type
+- MIDTS Margin Value
+- MIDTS Profit Amount
+- Final Customer Price
+- Review Status
+- Quote ID
+- Notes
+
+### Vendor Pricing Status System
+Vendor Pricing Status:
+- Not Requested
+- Requested
+- Submitted
+- Under Review
+- Approved
+- Rejected
+- Expired
+
+MIDTS Review Status:
+- Pending Review
+- Approved for Quote
+- Needs Clarification
+- Rejected
 
 ---
 
