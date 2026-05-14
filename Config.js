@@ -53,7 +53,7 @@ var ConfigService = {
 
   /**
    * FUNCTION: getRequiredSettingKeys
-   * PURPOSE: Return the canonical list of required configuration keys.
+   * PURPOSE: Return the canonical list of required configuration keys for full production readiness.
    * INPUT: none
    * OUTPUT: string[]
    * SIDE EFFECTS: none
@@ -63,7 +63,8 @@ var ConfigService = {
     return [
       this.BREVO_API_KEY_KEY,
       this.SLACK_WEBHOOK_URL_KEY,
-      this.ROOT_DRIVE_FOLDER_ID_KEY
+      this.ROOT_DRIVE_FOLDER_ID_KEY,
+      this.WEBSITE_WEBHOOK_TOKEN_KEY
     ];
   },
 

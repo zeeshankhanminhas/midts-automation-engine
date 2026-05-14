@@ -2,11 +2,12 @@
  * MIDTS Automation Engine
  * STAGE: 3 (Quote creation gating and append-only quote records)
  * WHAT THIS FILE DOES:
- * - Creates quote records only for qualified leads.
+ * - Creates quote records only for qualified leads with approved vendor pricing.
  * DEPENDENCIES:
- * - Google Sheets tabs: Leads, Quotes
+ * - Google Sheets tabs: Leads, Quotes, Vendor Pricing
  * - Uses Google Sheet tab: Quotes
  * - LeadService (LeadService.gs)
+ * - VendorPricingService (VendorPricingService.gs)
  * - DatabaseService (DatabaseService.gs)
  * - UtilsService (Utils.gs)
  * - ErrorLogger (ErrorLogger.gs)
@@ -87,8 +88,62 @@ var QuoteService = {
   },
 
   /**
+   * FUNCTION: getQuoteSnapshot
+   * PURPOSE: Read one quote row without mutating its lifecycle status.
+   * INPUT: quoteId (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: none
+   */
+  getQuoteSnapshot: function (quoteId) {
+    // ===== MAIN LOGIC =====
+    try {
+      var id = String(quoteId || '').trim();
+      if (!id) {
+        return { success: false, message: 'quoteId is required.' };
+      }
+
+      var ensureResult = DatabaseService.ensureQuotesSheetStructure();
+      if (!ensureResult.success) {
+        return ensureResult;
+      }
+
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.QUOTES_SHEET_NAME);
+      if (!sheet) {
+        return { success: false, message: 'Quotes sheet not found.' };
+      }
+
+      var values = sheet.getDataRange().getValues();
+      for (var i = 1; i < values.length; i++) {
+        if (String(values[i][0] || '').trim() === id) {
+          return {
+            success: true,
+            message: 'Quote snapshot loaded.',
+            data: {
+              quoteId: id,
+              leadId: String(values[i][1] || '').trim(),
+              createdAt: values[i][2],
+              quoteStatus: String(values[i][3] || '').trim(),
+              amount: Number(values[i][4] || 0),
+              currency: String(values[i][5] || '').trim(),
+              validUntil: values[i][6],
+              notes: String(values[i][7] || '').trim(),
+              rowNumber: i + 1
+            }
+          };
+        }
+      }
+
+      return { success: false, message: 'Quote not found for provided quoteId.' };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('QuoteService.getQuoteSnapshot', error, { quoteId: quoteId });
+      return { success: false, message: 'Failed to load quote snapshot.' };
+    }
+  },
+
+  /**
    * FUNCTION: createQuoteForLead
-   * PURPOSE: Create a quote row only when lead passes qualification gate.
+   * PURPOSE: Create a quote row only when lead passes qualification and vendor pricing gates.
    * INPUT: payload (object)
    * OUTPUT: { success: boolean, message: string, data?: object }
    * SIDE EFFECTS: Appends one row to Quotes sheet when validation passes.
@@ -126,6 +181,12 @@ var QuoteService = {
         return { success: false, message: 'Lead is not qualified for quote generation.', data: gateResult.data };
       }
 
+      // Enforce vendor pricing policy before customer quote creation.
+      var pricingResult = VendorPricingService.getApprovedPricingForLead(leadId);
+      if (!pricingResult.success) {
+        return pricingResult;
+      }
+
       var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
       var sheet = spreadsheet.getSheetByName(ConfigService.QUOTES_SHEET_NAME);
       if (!sheet) {
@@ -148,7 +209,12 @@ var QuoteService = {
       return {
         success: true,
         message: 'Quote created successfully.',
-        data: { quoteId: quoteId, leadId: leadId }
+        data: {
+          quoteId: quoteId,
+          leadId: leadId,
+          vendorPricingId: pricingResult.data.vendorPricingId,
+          vendorId: pricingResult.data.vendorId
+        }
       };
     } catch (error) {
       // ===== ERROR HANDLING =====

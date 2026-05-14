@@ -16,7 +16,7 @@
 var ProjectService = {
   /**
    * FUNCTION: createProjectFromQuote
-   * PURPOSE: Create a project row from a qualified lead, eligible vendor, and quote.
+   * PURPOSE: Create a project row from a qualified lead, eligible vendor, and accepted quote.
    * INPUT: payload (object: leadId, vendorId, quoteId, notes)
    * OUTPUT: { success: boolean, message: string, data?: object }
    * SIDE EFFECTS: Appends one row to Projects sheet.
@@ -44,9 +44,20 @@ var ProjectService = {
         return { success: false, message: 'Vendor assignment prerequisite failed.', data: vendorAssignResult.data || {} };
       }
 
-      var quoteStatusCheck = QuoteService.updateQuoteStatus(quoteId, 'Accepted');
+      // Project creation must verify quote acceptance, not silently accept the quote itself.
+      var quoteStatusCheck = QuoteService.getQuoteSnapshot(quoteId);
       if (!quoteStatusCheck.success) {
-        return { success: false, message: 'Quote must be accepted before project creation.', data: quoteStatusCheck.data || {} };
+        return quoteStatusCheck;
+      }
+      if (quoteStatusCheck.data.leadId !== leadId) {
+        return { success: false, message: 'Quote does not belong to the provided lead.', data: quoteStatusCheck.data };
+      }
+      if (quoteStatusCheck.data.quoteStatus !== 'Accepted') {
+        return {
+          success: false,
+          message: 'Quote must be accepted before project creation.',
+          data: { quoteId: quoteId, quoteStatus: quoteStatusCheck.data.quoteStatus }
+        };
       }
 
       var ensureResult = DatabaseService.ensureProjectsSheetStructure();

@@ -22,7 +22,13 @@
 function doPost(e) {
   // ===== MAIN LOGIC =====
   try {
+    Logger.log('doPost received website webhook request.');
     var result = WebsiteWebhookService.handlePostEvent(e);
+    Logger.log('doPost website webhook result: ' + JSON.stringify({
+      success: result && result.success,
+      message: result && result.message,
+      leadId: result && result.data ? result.data.leadId : ''
+    }));
     return createWebsiteWebhookJsonResponse_(result);
   } catch (error) {
     // ===== ERROR HANDLING =====
@@ -108,30 +114,31 @@ function runStage10WebsiteWebhookLogSetupTest() {
 
 /**
  * FUNCTION: runStage10WebsiteWebhookPayloadTest
- * PURPOSE: Verify the website webhook payload path creates a lead using the configured token.
+ * PURPOSE: Verify the website webhook payload path creates a lead or logs the exact setup failure.
  * INPUT: none
  * OUTPUT: { success: boolean, message: string, data?: object }
- * SIDE EFFECTS: Appends one test lead row when WEBSITE_WEBHOOK_TOKEN is configured.
+ * SIDE EFFECTS: Appends one webhook audit row; appends one test lead row when WEBSITE_WEBHOOK_TOKEN is configured.
  */
 function runStage10WebsiteWebhookPayloadTest() {
   // ===== MAIN LOGIC =====
   try {
     var tokenResult = WebsiteWebhookService.getConfiguredWebhookToken_();
-    if (!tokenResult.success) {
-      return tokenResult;
-    }
+    var submittedToken = tokenResult.success ? tokenResult.data.value : '';
+    var runStamp = String(new Date().getTime());
+    var testEmail = 'stage10-website+' + runStamp + '@example.com';
 
     var fakeEvent = {
       parameter: {},
       postData: {
         type: 'application/json',
         contents: JSON.stringify({
-          webhookToken: tokenResult.data.value,
-          fullName: 'Stage 10 Website Lead',
-          email: 'stage10-website@example.com',
+          webhookToken: submittedToken,
+          fullName: 'Stage 10 Website Lead ' + runStamp,
+          email: testEmail,
           company: 'MIDTS Website Test',
           projectType: 'Website CAD Enquiry',
           source: 'Stage10WebhookTest',
+          pageUrl: 'stage10-payload-test',
           message: 'Created by runStage10WebsiteWebhookPayloadTest.'
         })
       }
@@ -141,7 +148,7 @@ function runStage10WebsiteWebhookPayloadTest() {
     return {
       success: result.success,
       message: result.success ? 'Stage 10 website webhook payload test passed.' : 'Stage 10 website webhook payload test failed.',
-      data: { webhookResult: result }
+      data: { tokenSetup: tokenResult, webhookResult: result, testEmail: testEmail }
     };
   } catch (error) {
     // ===== ERROR HANDLING =====

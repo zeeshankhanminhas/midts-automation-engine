@@ -9,6 +9,7 @@
  * - DriveService (DriveService.gs)
  * - LeadService (LeadService.gs)
  * - QuoteService (QuoteService.gs)
+ * - VendorPricingService (VendorPricingService.gs)
  * - ProjectService (ProjectService.gs)
  * - DatabaseService (DatabaseService.gs)
  * - ErrorLogger (ErrorLogger.gs)
@@ -88,6 +89,32 @@ function runStage6DriveAccessWorkflowTest() {
       return qualify;
     }
 
+    var vendorId = UtilsService.createPrefixedId_('VEND-STAGE6-');
+    var vendorSheetResult = DatabaseService.ensureVendorsSheetStructure();
+    if (!vendorSheetResult.success) {
+      return vendorSheetResult;
+    }
+
+    var vendorSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
+    vendorSheet.appendRow([vendorId, 'Stage 6 Eligible Vendor', testEmailResult.data.value, 'Yes', 'Yes', 'Approved', '']);
+
+    var vendorPricing = VendorPricingService.submitVendorPricing({
+      leadId: lead.data.leadId,
+      vendorId: vendorId,
+      vendorCost: 1100,
+      currency: 'GBP',
+      eta: '5 working days',
+      vendorNotes: 'Stage 6 Drive workflow vendor pricing.'
+    });
+    if (!vendorPricing.success) {
+      return vendorPricing;
+    }
+
+    var pricingApproval = VendorPricingService.approveVendorPricingForQuote(vendorPricing.data.vendorPricingId, 'Approved for Stage 6 Drive workflow test.');
+    if (!pricingApproval.success) {
+      return pricingApproval;
+    }
+
     var quote = QuoteService.createQuoteForLead({
       leadId: lead.data.leadId,
       amount: 2100,
@@ -104,14 +131,10 @@ function runStage6DriveAccessWorkflowTest() {
       return sent;
     }
 
-    var vendorId = UtilsService.createPrefixedId_('VEND-STAGE6-');
-    var vendorSheetResult = DatabaseService.ensureVendorsSheetStructure();
-    if (!vendorSheetResult.success) {
-      return vendorSheetResult;
+    var accepted = QuoteService.updateQuoteStatus(quote.data.quoteId, 'Accepted');
+    if (!accepted.success) {
+      return accepted;
     }
-
-    var vendorSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
-    vendorSheet.appendRow([vendorId, 'Stage 6 Eligible Vendor', testEmailResult.data.value, 'Yes', 'Yes', 'Approved', '']);
 
     var project = ProjectService.createProjectFromQuote({
       leadId: lead.data.leadId,
@@ -144,9 +167,12 @@ function runStage6DriveAccessWorkflowTest() {
         setup: setup,
         lead: lead,
         qualification: qualify,
+        vendorId: vendorId,
+        vendorPricing: vendorPricing,
+        pricingApproval: pricingApproval,
         quote: quote,
         quoteSent: sent,
-        vendorId: vendorId,
+        quoteAccepted: accepted,
         project: project,
         folder: folder,
         grant: grant,

@@ -16,6 +16,7 @@ var UtilsService = {
   ID_TYPE_CODE_MAP_: {
     LEAD: 'L',
     VENDOR: 'V',
+    VENDOR_PRICING: 'VP',
     PROJECT: 'P',
     QUOTE: 'Q',
     PAYMENT: 'PAY',
@@ -40,7 +41,7 @@ var UtilsService = {
   /**
    * FUNCTION: createSequentialId_
    * PURPOSE: Create a branded, short, sequential MIDTS ID for one record type.
-   * INPUT: recordType (string: LEAD, VENDOR, PROJECT, QUOTE, PAYMENT, EMAIL_LOG, SLACK_LOG, DRIVE_LOG, ERROR, LOG)
+   * INPUT: recordType (string: LEAD, VENDOR, VENDOR_PRICING, PROJECT, QUOTE, PAYMENT, EMAIL_LOG, SLACK_LOG, DRIVE_LOG, ERROR, LOG)
    * OUTPUT: string
    * SIDE EFFECTS: Creates/updates one row in ID Counters sheet.
    */
