@@ -17,17 +17,27 @@
  * PURPOSE: Receive one website form submission and create a lead through WebsiteWebhookService.
  * INPUT: e (Apps Script POST event object)
  * OUTPUT: TextOutput JSON
- * SIDE EFFECTS: May append one Leads row when validation passes.
+ * SIDE EFFECTS: May append one Leads row when validation passes and send one lead acknowledgement email.
  */
 function doPost(e) {
   // ===== MAIN LOGIC =====
   try {
     Logger.log('doPost received website webhook request.');
     var result = WebsiteWebhookService.handlePostEvent(e);
+    var emailResult = sendWebsiteLeadAcknowledgement_(e, result);
+    if (emailResult) {
+      result.data = result.data || {};
+      result.data.emailNotification = emailResult;
+      result.message = emailResult.success
+        ? 'Website lead created successfully and acknowledgement email sent.'
+        : 'Website lead created successfully, but acknowledgement email was not sent.';
+    }
+
     Logger.log('doPost website webhook result: ' + JSON.stringify({
       success: result && result.success,
       message: result && result.message,
-      leadId: result && result.data ? result.data.leadId : ''
+      leadId: result && result.data ? result.data.leadId : '',
+      emailNotification: result && result.data ? result.data.emailNotification : null
     }));
     return createWebsiteWebhookJsonResponse_(result);
   } catch (error) {
@@ -37,6 +47,59 @@ function doPost(e) {
       success: false,
       message: 'Website webhook request failed unexpectedly.'
     });
+  }
+}
+
+/**
+ * FUNCTION: sendWebsiteLeadAcknowledgement_
+ * PURPOSE: Internal helper to send the Stage 7 lead acknowledgement after a successful website lead.
+ * INPUT: e (Apps Script POST event object), webhookResult (object)
+ * OUTPUT: { success: boolean, message: string, data?: object }|null
+ * SIDE EFFECTS: May send one Brevo email and appends one Website Webhook Logs row for email status.
+ */
+function sendWebsiteLeadAcknowledgement_(e, webhookResult) {
+  // ===== MAIN LOGIC =====
+  try {
+    if (!webhookResult || !webhookResult.success || !webhookResult.data || !webhookResult.data.leadId) {
+      return null;
+    }
+
+    var payloadResult = WebsiteWebhookService.parsePostEvent_(e);
+    if (!payloadResult.success) {
+      return {
+        success: false,
+        message: 'Lead was created, but email payload could not be parsed.',
+        data: { parseResult: payloadResult }
+      };
+    }
+
+    var payload = payloadResult.data.payload || {};
+    var email = WebsiteWebhookService.cleanText_(WebsiteWebhookService.getField_(payload, ['email', 'work_email', 'emailAddress', 'email_address']));
+    var fullName = WebsiteWebhookService.cleanText_(WebsiteWebhookService.getField_(payload, ['fullName', 'full_name', 'name', 'yourName']));
+    var emailResult = EmailService.sendLeadReceivedEmail({
+      email: email,
+      fullName: fullName,
+      leadId: webhookResult.data.leadId
+    });
+
+    var auditResult = {
+      success: emailResult.success,
+      message: emailResult.message,
+      data: {
+        leadId: webhookResult.data.leadId,
+        emailNotification: {
+          success: emailResult.success,
+          message: emailResult.message,
+          data: emailResult.data || {}
+        }
+      }
+    };
+    WebsiteWebhookService.logWebhookAttempt_('Lead acknowledgement email', auditResult, payload);
+    return auditResult.data.emailNotification;
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('sendWebsiteLeadAcknowledgement_', error);
+    return { success: false, message: 'Failed to send website lead acknowledgement email.' };
   }
 }
 
@@ -145,6 +208,12 @@ function runStage10WebsiteWebhookPayloadTest() {
     };
 
     var result = WebsiteWebhookService.handlePostEvent(fakeEvent);
+    var emailResult = sendWebsiteLeadAcknowledgement_(fakeEvent, result);
+    if (emailResult) {
+      result.data = result.data || {};
+      result.data.emailNotification = emailResult;
+    }
+
     return {
       success: result.success,
       message: result.success ? 'Stage 10 website webhook payload test passed.' : 'Stage 10 website webhook payload test failed.',
