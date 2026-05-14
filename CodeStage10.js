@@ -67,6 +67,46 @@ function runStage10WebsiteWebhookSetupValidation() {
 }
 
 /**
+ * FUNCTION: runStage10WebsiteWebhookLogSetupTest
+ * PURPOSE: Force-create and verify the Website Webhook Logs sheet for deployment debugging.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: May create Website Webhook Logs sheet headers.
+ */
+function runStage10WebsiteWebhookLogSetupTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    var setupResult = WebsiteWebhookService.ensureWebhookLogSheet_();
+    var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetNames = spreadsheet.getSheets().map(function (sheet) {
+      return sheet.getName();
+    });
+    var hasWebhookLogSheet = sheetNames.indexOf(WebsiteWebhookService.WEBHOOK_LOGS_SHEET_NAME) !== -1;
+
+    return {
+      success: setupResult.success && hasWebhookLogSheet,
+      message: hasWebhookLogSheet ? 'Website webhook log sheet exists.' : 'Website webhook log sheet was not found after setup.',
+      data: {
+        setupResult: setupResult,
+        spreadsheetName: spreadsheet.getName(),
+        spreadsheetUrl: spreadsheet.getUrl(),
+        expectedSheetName: WebsiteWebhookService.WEBHOOK_LOGS_SHEET_NAME,
+        hasWebhookLogSheet: hasWebhookLogSheet,
+        sheetNames: sheetNames
+      }
+    };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage10WebsiteWebhookLogSetupTest', error);
+    return {
+      success: false,
+      message: 'Failed to create or verify Website Webhook Logs sheet.',
+      data: { errorMessage: error && error.message ? error.message : String(error) }
+    };
+  }
+}
+
+/**
  * FUNCTION: runStage10WebsiteWebhookPayloadTest
  * PURPOSE: Verify the website webhook payload path creates a lead using the configured token.
  * INPUT: none
