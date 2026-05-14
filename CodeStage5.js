@@ -8,6 +8,7 @@
  * - PaymentService (PaymentService.gs)
  * - LeadService (LeadService.gs)
  * - QuoteService (QuoteService.gs)
+ * - VendorPricingService (VendorPricingService.gs)
  * - ErrorLogger (ErrorLogger.gs)
  */
 
@@ -39,7 +40,7 @@ function runStage5PaymentSetupValidation() {
  * PURPOSE: Verify payment tracking blocks non-accepted quotes and records paid status for accepted quotes.
  * INPUT: none
  * OUTPUT: { success: boolean, message: string, data?: object }
- * SIDE EFFECTS: Appends lead, quote, and payment test rows; updates one payment row.
+ * SIDE EFFECTS: Appends lead, vendor pricing, quote, and payment test rows; updates one payment row.
  */
 function runStage5PaymentTrackingTest() {
   // ===== MAIN LOGIC =====
@@ -64,6 +65,23 @@ function runStage5PaymentTrackingTest() {
     var qualify = LeadService.markStep2Completed(lead.data.leadId, 91);
     if (!qualify.success) {
       return qualify;
+    }
+
+    var vendorPricing = VendorPricingService.submitVendorPricing({
+      leadId: lead.data.leadId,
+      vendorId: 'STAGE5-TEST-VENDOR',
+      vendorCost: 900,
+      currency: 'GBP',
+      eta: '5 working days',
+      vendorNotes: 'Stage 5 payment tracking vendor pricing.'
+    });
+    if (!vendorPricing.success) {
+      return vendorPricing;
+    }
+
+    var pricingApproval = VendorPricingService.approveVendorPricingForQuote(vendorPricing.data.vendorPricingId, 'Approved for Stage 5 payment test.');
+    if (!pricingApproval.success) {
+      return pricingApproval;
     }
 
     var quote = QuoteService.createQuoteForLead({
@@ -117,6 +135,8 @@ function runStage5PaymentTrackingTest() {
         setup: setup,
         lead: lead,
         qualification: qualify,
+        vendorPricing: vendorPricing,
+        pricingApproval: pricingApproval,
         quote: quote,
         blockedPayment: blockedPayment,
         quoteSent: sent,
