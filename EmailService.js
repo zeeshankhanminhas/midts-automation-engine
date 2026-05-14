@@ -9,6 +9,7 @@
  * - Uses Brevo API key from Settings sheet: BREVO_API_KEY
  * - Uses Google Sheet tab: Email Logs
  * - Optional test recipient from Settings sheet: TEST_EMAIL_RECIPIENT
+ * - Step 2 form base URL from Settings sheet: STEP2_FORM_BASE_URL
  * - UrlFetchApp external API access
  * - DatabaseService (DatabaseService.gs)
  * - ConfigService (Config.gs)
@@ -100,22 +101,46 @@ var EmailService = {
       if (!email || email.indexOf('@') === -1) {
         return { success: false, message: 'A valid lead email is required.' };
       }
+      if (!leadId) {
+        return { success: false, message: 'leadId is required to send the Step 2 link.' };
+      }
+
+      var step2BaseUrlResult = this.getSettingValue_(ConfigService.STEP2_FORM_BASE_URL_KEY);
+      if (!step2BaseUrlResult.success) {
+        return step2BaseUrlResult;
+      }
+      var step2Url = this.buildStep2FormUrl_(step2BaseUrlResult.data.value, leadId);
 
       // Never include sensitive file links in this acknowledgement.
-      var safeLeadReference = leadId ? (' Reference: ' + this.escapeHtml_(leadId) + '.') : '';
+      var safeLeadReference = ' Reference: ' + this.escapeHtml_(leadId) + '.';
+      var safeStep2Url = this.escapeHtml_(step2Url);
       return this.sendTransactionalEmail({
         toEmail: email,
         toName: fullName,
-        subject: 'MIDTS request received',
-        htmlContent: '<p>Hello ' + this.escapeHtml_(fullName) + ',</p><p>We have received your MIDTS request and will review the details shortly.</p><p>' + safeLeadReference + '</p>',
-        textContent: 'Hello ' + fullName + ', we have received your MIDTS request and will review the details shortly.' + safeLeadReference,
-        templateKey: 'LEAD_RECEIVED'
+        subject: 'MIDTS request received - complete Step 2',
+        htmlContent: '<p>Hello ' + this.escapeHtml_(fullName) + ',</p><p>We have received your MIDTS request.</p><p>Please complete the Step 2 technical requirement form so we can qualify the work: <a href="' + safeStep2Url + '">Complete Step 2</a>.</p><p>' + safeLeadReference + '</p>',
+        textContent: 'Hello ' + fullName + ', we have received your MIDTS request. Please complete the Step 2 technical requirement form: ' + step2Url + safeLeadReference,
+        templateKey: 'LEAD_RECEIVED_STEP_2'
       });
     } catch (error) {
       // ===== ERROR HANDLING =====
       ErrorLogger.logError_('EmailService.sendLeadReceivedEmail', error, { lead: lead });
       return { success: false, message: 'Failed to send lead received email.' };
     }
+  },
+
+  /**
+   * FUNCTION: buildStep2FormUrl_
+   * PURPOSE: Internal helper to create a personalized Step 2 form link for an existing lead.
+   * INPUT: baseUrl (string), leadId (string)
+   * OUTPUT: string
+   * SIDE EFFECTS: none
+   */
+  buildStep2FormUrl_: function (baseUrl, leadId) {
+    // ===== MAIN LOGIC =====
+    var trimmedBaseUrl = String(baseUrl || '').trim();
+    var separator = trimmedBaseUrl.indexOf('?') === -1 ? '?' : '&';
+    return trimmedBaseUrl + separator + 'leadId=' + encodeURIComponent(String(leadId || '').trim());
   },
 
   /**
@@ -281,7 +306,7 @@ var EmailService = {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
+      .replace(/\"/g, '&quot;')
       .replace(/'/g, '&#39;');
   },
 
