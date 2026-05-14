@@ -3,28 +3,31 @@
  * STAGE: 10 (Website form webhook entry point)
  * WHAT THIS FILE DOES:
  * - Exposes doPost(e) for public website lead submissions.
+ * - Routes Step 1 lead intake and Step 2 technical requirement submissions.
  * - Returns JSON responses for website/webhook clients.
- * - Provides Stage 10 setup and payload tests.
+ * - Provides Stage 10/11 setup and payload tests.
  * DEPENDENCIES:
  * - Apps Script Web App deployment
  * - WebsiteWebhookService (WebsiteWebhookService.gs)
+ * - Step2RequirementService (Step2RequirementService.gs)
  * - ConfigService (Config.gs)
  * - ErrorLogger (ErrorLogger.gs)
  */
 
 /**
  * FUNCTION: doPost
- * PURPOSE: Receive one website form submission and create a lead through WebsiteWebhookService.
+ * PURPOSE: Receive one website form submission and route it to Step 1 lead intake or Step 2 requirement intake.
  * INPUT: e (Apps Script POST event object)
  * OUTPUT: TextOutput JSON
- * SIDE EFFECTS: May append one Leads row when validation passes and send one lead acknowledgement email.
+ * SIDE EFFECTS: May append/update lead rows and write webhook audit rows.
  */
 function doPost(e) {
   // ===== MAIN LOGIC =====
   try {
     Logger.log('doPost received website webhook request.');
-    var result = WebsiteWebhookService.handlePostEvent(e);
-    var emailResult = sendWebsiteLeadAcknowledgement_(e, result);
+    var routeResult = routeWebsiteWebhookPost_(e);
+    var result = routeResult.result;
+    var emailResult = routeResult.isStep2 ? null : sendWebsiteLeadAcknowledgement_(e, result);
     if (emailResult) {
       result.data = result.data || {};
       result.data.emailNotification = emailResult;
@@ -37,6 +40,7 @@ function doPost(e) {
       success: result && result.success,
       message: result && result.message,
       leadId: result && result.data ? result.data.leadId : '',
+      route: routeResult.isStep2 ? 'step2' : 'step1',
       emailNotification: result && result.data ? result.data.emailNotification : null
     }));
     return createWebsiteWebhookJsonResponse_(result);
@@ -48,6 +52,22 @@ function doPost(e) {
       message: 'Website webhook request failed unexpectedly.'
     });
   }
+}
+
+/**
+ * FUNCTION: routeWebsiteWebhookPost_
+ * PURPOSE: Internal helper to route public website posts by explicit form stage.
+ * INPUT: e (Apps Script POST event object)
+ * OUTPUT: { isStep2: boolean, result: object }
+ * SIDE EFFECTS: Downstream handler performs writes.
+ */
+function routeWebsiteWebhookPost_(e) {
+  // ===== MAIN LOGIC =====
+  var payloadResult = WebsiteWebhookService.parsePostEvent_(e);
+  if (payloadResult.success && Step2RequirementService.isStep2Payload(payloadResult.data.payload || {})) {
+    return { isStep2: true, result: Step2RequirementService.handlePostEvent(e) };
+  }
+  return { isStep2: false, result: WebsiteWebhookService.handlePostEvent(e) };
 }
 
 /**
@@ -172,6 +192,80 @@ function runStage10WebsiteWebhookLogSetupTest() {
       message: 'Failed to create or verify Website Webhook Logs sheet.',
       data: { errorMessage: error && error.message ? error.message : String(error) }
     };
+  }
+}
+
+/**
+ * FUNCTION: runStage11Step2RequirementSetupTest
+ * PURPOSE: Verify Step 2 requirement webhook dependencies are configured before going live.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: May create Leads and Step 2 Requirement Logs headers.
+ */
+function runStage11Step2RequirementSetupTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    return Step2RequirementService.ensureStep2RequirementSetup();
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage11Step2RequirementSetupTest', error);
+    return { success: false, message: 'Stage 11 Step 2 requirement setup test failed unexpectedly.' };
+  }
+}
+
+/**
+ * FUNCTION: runStage11Step2RequirementPayloadTest
+ * PURPOSE: Verify Step 2 technical requirement payload updates an existing lead and writes an audit row.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: Appends one lead row, then updates it as Step 2 completed and qualified.
+ */
+function runStage11Step2RequirementPayloadTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    var createResult = LeadService.createLead({
+      fullName: 'Stage 11 Step 2 Test Lead',
+      email: 'stage11-step2@example.com',
+      company: 'MIDTS Step 2 Test',
+      projectType: 'Website CAD Enquiry',
+      source: 'Stage11Step2Test',
+      notes: 'Created by runStage11Step2RequirementPayloadTest.'
+    });
+    if (!createResult.success) {
+      return createResult;
+    }
+
+    var tokenResult = WebsiteWebhookService.getConfiguredWebhookToken_();
+    var submittedToken = tokenResult.success ? tokenResult.data.value : '';
+    var fakeEvent = {
+      parameter: {},
+      postData: {
+        type: 'application/json',
+        contents: JSON.stringify({
+          formStage: 'step2',
+          webhookToken: submittedToken,
+          leadId: createResult.data.leadId,
+          email: 'stage11-step2@example.com',
+          projectType: 'Website CAD Enquiry',
+          timelineUrgency: 'Urgent: 24-72 hours',
+          filesDrawingsReady: 'Yes, files are ready',
+          requirementComplexity: 'CAM / manufacturing support',
+          budget: 'Budget approved',
+          technicalRequirement: 'Detailed technical requirement for a manufacturing-ready CAD/CAM support request with enough information to qualify the lead.'
+        })
+      }
+    };
+
+    var result = Step2RequirementService.handlePostEvent(fakeEvent);
+    return {
+      success: result.success,
+      message: result.success ? 'Stage 11 Step 2 requirement payload test passed.' : 'Stage 11 Step 2 requirement payload test failed.',
+      data: { leadCreation: createResult, tokenSetup: tokenResult, step2Result: result }
+    };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage11Step2RequirementPayloadTest', error);
+    return { success: false, message: 'Stage 11 Step 2 requirement payload test failed unexpectedly.' };
   }
 }
 
