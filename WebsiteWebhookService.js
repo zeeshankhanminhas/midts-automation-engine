@@ -4,11 +4,13 @@
  * WHAT THIS FILE DOES:
  * - Accepts validated website form submissions from Apps Script doPost(e).
  * - Normalizes external form fields into LeadService.createLead input.
+ * - Audits every webhook outcome to the Website Webhook Logs sheet.
  * - Requires WEBSITE_WEBHOOK_TOKEN from Settings sheet or Script Properties.
  * DEPENDENCIES:
  * - Uses website webhook token from Settings sheet: WEBSITE_WEBHOOK_TOKEN
  * - Google Sheets tab: Leads
  * - Google Sheets tab: Settings
+ * - Google Sheets tab: Website Webhook Logs
  * - LeadService (LeadService.gs)
  * - DatabaseService (DatabaseService.gs)
  * - ConfigService (Config.gs)
@@ -21,37 +23,65 @@ var WebsiteWebhookService = {
   DEFAULT_COMPANY: 'Not provided',
   DEFAULT_PROJECT_TYPE: 'Website Enquiry',
   MAX_TEXT_LENGTH: 3000,
+  WEBHOOK_LOGS_SHEET_NAME: 'Website Webhook Logs',
+  WEBHOOK_LOG_HEADERS: [
+    'Timestamp',
+    'Stage',
+    'Success',
+    'Message',
+    'Lead ID',
+    'Ignored',
+    'Payload Keys',
+    'Full Name',
+    'Email',
+    'Company',
+    'Project Type',
+    'Page URL',
+    'Result JSON'
+  ],
 
   /**
    * FUNCTION: handlePostEvent
    * PURPOSE: Process one public website form POST into a lead record.
    * INPUT: e (Apps Script doPost event object)
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: May append one Leads row when validation passes.
+   * SIDE EFFECTS: May append one Leads row when validation passes; appends one Website Webhook Logs row.
    */
   handlePostEvent: function (e) {
     // ===== MAIN LOGIC =====
+    var payload = {};
     try {
       var payloadResult = this.parsePostEvent_(e);
+      if (payloadResult.success && payloadResult.data && payloadResult.data.payload) {
+        payload = payloadResult.data.payload;
+      }
       if (!payloadResult.success) {
+        this.logWebhookAttempt_('Parse', payloadResult, payload);
         return payloadResult;
       }
 
-      var tokenResult = this.validateWebhookToken_(payloadResult.data.payload);
+      var tokenResult = this.validateWebhookToken_(payload);
       if (!tokenResult.success) {
+        this.logWebhookAttempt_('Token validation', tokenResult, payload);
         return tokenResult;
       }
 
-      if (this.isHoneypotFilled_(payloadResult.data.payload)) {
+      if (this.isHoneypotFilled_(payload)) {
         // Return success without creating a row so simple bot submissions receive no useful signal.
-        return { success: true, message: 'Submission received.', data: { ignored: true } };
+        var ignoredResult = { success: true, message: 'Submission received.', data: { ignored: true } };
+        this.logWebhookAttempt_('Honeypot', ignoredResult, payload);
+        return ignoredResult;
       }
 
-      return this.createLeadFromWebsitePayload_(payloadResult.data.payload);
+      var createResult = this.createLeadFromWebsitePayload_(payload);
+      this.logWebhookAttempt_('Lead creation', createResult, payload);
+      return createResult;
     } catch (error) {
       // ===== ERROR HANDLING =====
       ErrorLogger.logError_('WebsiteWebhookService.handlePostEvent', error);
-      return { success: false, message: 'Website lead webhook failed unexpectedly.' };
+      var errorResult = { success: false, message: 'Website lead webhook failed unexpectedly.' };
+      this.logWebhookAttempt_('Unhandled error', errorResult, payload);
+      return errorResult;
     }
   },
 
@@ -60,7 +90,7 @@ var WebsiteWebhookService = {
    * PURPOSE: Verify the website webhook can receive submissions safely.
    * INPUT: none
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: May create Settings/Leads sheet headers and append missing WEBSITE_WEBHOOK_TOKEN row.
+   * SIDE EFFECTS: May create Settings/Leads/Webhook Logs sheet headers and append missing WEBSITE_WEBHOOK_TOKEN row.
    */
   ensureWebsiteWebhookSetup: function () {
     // ===== MAIN LOGIC =====
@@ -75,6 +105,11 @@ var WebsiteWebhookService = {
         return leadsResult;
       }
 
+      var logsResult = this.ensureWebhookLogSheet_();
+      if (!logsResult.success) {
+        return logsResult;
+      }
+
       var tokenResult = this.getConfiguredWebhookToken_();
       if (!tokenResult.success) {
         return tokenResult;
@@ -83,7 +118,10 @@ var WebsiteWebhookService = {
       return {
         success: true,
         message: 'Website webhook setup verified.',
-        data: { requiredSetting: ConfigService.WEBSITE_WEBHOOK_TOKEN_KEY }
+        data: {
+          requiredSetting: ConfigService.WEBSITE_WEBHOOK_TOKEN_KEY,
+          auditSheet: this.WEBHOOK_LOGS_SHEET_NAME
+        }
       };
     } catch (error) {
       // ===== ERROR HANDLING =====
@@ -183,7 +221,7 @@ var WebsiteWebhookService = {
       };
     } catch (error) {
       // ===== ERROR HANDLING =====
-      ErrorLogger.logError_('WebsiteWebhookService.createLeadFromWebsitePayload_', error, { payload: payload });
+      ErrorLogger.logError_('WebsiteWebhookService.createLeadFromWebsitePayload_', error, { payload: this.redactSensitivePayload_(payload) });
       return { success: false, message: 'Failed to create website lead.' };
     }
   },
@@ -204,7 +242,14 @@ var WebsiteWebhookService = {
 
     var submittedToken = this.cleanText_(this.getField_(payload, ['webhookToken', 'webhook_token', 'formToken', 'token', ConfigService.WEBSITE_WEBHOOK_TOKEN_KEY]));
     if (!submittedToken || submittedToken !== configuredResult.data.value) {
-      return { success: false, message: 'Website webhook token is missing or invalid.' };
+      return {
+        success: false,
+        message: 'Website webhook token is missing or invalid.',
+        data: {
+          submittedTokenPresent: Boolean(submittedToken),
+          configuredTokenPresent: Boolean(configuredResult.data.value)
+        }
+      };
     }
 
     return { success: true, message: 'Website webhook token verified.' };
@@ -279,6 +324,121 @@ var WebsiteWebhookService = {
       ErrorLogger.logError_('WebsiteWebhookService.ensureWebhookSettingsStructure_', error);
       return { success: false, message: 'Failed to verify website webhook setting row.' };
     }
+  },
+
+  /**
+   * FUNCTION: ensureWebhookLogSheet_
+   * PURPOSE: Internal helper to create the website webhook audit sheet with fixed headers.
+   * INPUT: none
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: May create Website Webhook Logs sheet and set missing headers.
+   */
+  ensureWebhookLogSheet_: function () {
+    // ===== MAIN LOGIC =====
+    try {
+      var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = spreadsheet.getSheetByName(this.WEBHOOK_LOGS_SHEET_NAME);
+      if (!sheet) {
+        sheet = spreadsheet.insertSheet(this.WEBHOOK_LOGS_SHEET_NAME);
+      }
+
+      var headerCount = Math.max(sheet.getLastColumn(), 1);
+      var currentHeaders = sheet.getRange(1, 1, 1, headerCount).getValues()[0].map(function (header) {
+        return String(header || '').trim();
+      }).filter(function (header) {
+        return header !== '';
+      });
+
+      if (currentHeaders.length === 0) {
+        sheet.getRange(1, 1, 1, this.WEBHOOK_LOG_HEADERS.length).setValues([this.WEBHOOK_LOG_HEADERS]);
+      } else {
+        var missingHeaders = this.WEBHOOK_LOG_HEADERS.filter(function (requiredHeader) {
+          return currentHeaders.indexOf(requiredHeader) === -1;
+        });
+        if (missingHeaders.length > 0) {
+          sheet.getRange(1, currentHeaders.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+        }
+      }
+
+      return { success: true, message: 'Website webhook log sheet verified.', data: { sheetName: this.WEBHOOK_LOGS_SHEET_NAME } };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('WebsiteWebhookService.ensureWebhookLogSheet_', error);
+      return { success: false, message: 'Failed to verify website webhook log sheet.' };
+    }
+  },
+
+  /**
+   * FUNCTION: logWebhookAttempt_
+   * PURPOSE: Internal helper to record every website webhook decision for operational debugging.
+   * INPUT: stage (string), result (object), payload (object)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Appends one Website Webhook Logs row; never throws back to doPost.
+   */
+  logWebhookAttempt_: function (stage, result, payload) {
+    // ===== MAIN LOGIC =====
+    try {
+      var ensureResult = this.ensureWebhookLogSheet_();
+      if (!ensureResult.success) {
+        return ensureResult;
+      }
+
+      var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = spreadsheet.getSheetByName(this.WEBHOOK_LOGS_SHEET_NAME);
+      var safePayload = this.redactSensitivePayload_(payload || {});
+      var safeResult = this.redactSensitivePayload_(result || {});
+      var resultData = result && result.data ? result.data : {};
+
+      sheet.appendRow([
+        new Date(),
+        stage || 'Unknown',
+        Boolean(result && result.success),
+        result && result.message ? String(result.message) : '',
+        resultData.leadId || '',
+        resultData.ignored ? 'Yes' : 'No',
+        Object.keys(safePayload).sort().join(', '),
+        this.cleanText_(this.getField_(safePayload, ['fullName', 'full_name', 'name', 'yourName'])),
+        this.cleanText_(this.getField_(safePayload, ['email', 'work_email', 'emailAddress', 'email_address'])),
+        this.cleanText_(this.getField_(safePayload, ['company', 'companyName', 'company_name'])),
+        this.cleanText_(this.getField_(safePayload, ['projectType', 'project_type', 'service', 'requirement'])),
+        this.cleanText_(this.getField_(safePayload, ['pageUrl', 'page_url', 'url'])),
+        JSON.stringify(safeResult)
+      ]);
+
+      return { success: true, message: 'Website webhook attempt logged.' };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('WebsiteWebhookService.logWebhookAttempt_', error, { stage: stage });
+      return { success: false, message: 'Failed to log website webhook attempt.' };
+    }
+  },
+
+  /**
+   * FUNCTION: redactSensitivePayload_
+   * PURPOSE: Internal helper to remove public webhook token values before writing audit rows.
+   * INPUT: value (object)
+   * OUTPUT: object
+   * SIDE EFFECTS: none
+   */
+  redactSensitivePayload_: function (value) {
+    // ===== MAIN LOGIC =====
+    if (!value || typeof value !== 'object') {
+      return value;
+    }
+
+    var tokenKeys = ['webhookToken', 'webhook_token', 'formToken', 'token', ConfigService.WEBSITE_WEBHOOK_TOKEN_KEY];
+    var copy = Array.isArray(value) ? [] : {};
+    Object.keys(value).forEach(function (key) {
+      var shouldRedact = tokenKeys.indexOf(key) !== -1;
+      if (shouldRedact) {
+        copy[key] = value[key] ? '[REDACTED]' : '';
+      } else if (value[key] && typeof value[key] === 'object') {
+        copy[key] = WebsiteWebhookService.redactSensitivePayload_(value[key]);
+      } else {
+        copy[key] = value[key];
+      }
+    });
+    return copy;
   },
 
   /**
