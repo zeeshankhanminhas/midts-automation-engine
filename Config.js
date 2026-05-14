@@ -51,6 +51,11 @@ var ConfigService = {
   // Example: WEBSITE_WEBHOOK_TOKEN = "choose-a-private-random-token"
   WEBSITE_WEBHOOK_TOKEN_KEY: 'WEBSITE_WEBHOOK_TOKEN',
 
+  // REQUIRED: Set this value before sending Step 2 links in lead acknowledgement emails.
+  // Uses Step 2 frontend URL from Settings sheet: STEP2_FORM_BASE_URL
+  // Example: STEP2_FORM_BASE_URL = "https://zeeshankhanminhas.github.io/NEW-MIDTS/step-2/"
+  STEP2_FORM_BASE_URL_KEY: 'STEP2_FORM_BASE_URL',
+
   /**
    * FUNCTION: getRequiredSettingKeys
    * PURPOSE: Return the canonical list of required configuration keys for full production readiness.
@@ -64,7 +69,8 @@ var ConfigService = {
       this.BREVO_API_KEY_KEY,
       this.SLACK_WEBHOOK_URL_KEY,
       this.ROOT_DRIVE_FOLDER_ID_KEY,
-      this.WEBSITE_WEBHOOK_TOKEN_KEY
+      this.WEBSITE_WEBHOOK_TOKEN_KEY,
+      this.STEP2_FORM_BASE_URL_KEY
     ];
   },
 
