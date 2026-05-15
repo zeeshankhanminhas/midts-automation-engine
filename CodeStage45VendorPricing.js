@@ -168,3 +168,86 @@ function runStage45VendorPricingWorkflowTest() {
     return { success: false, message: 'Stage 4.5 vendor pricing workflow test failed unexpectedly.' };
   }
 }
+
+/**
+ * FUNCTION: runStage45VendorPricingWebhookPayloadTest
+ * PURPOSE: Verify public vendor pricing webhook payload records pricing without creating a new lead.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: Appends one qualified test lead, vendor row, vendor pricing row, and vendor pricing log row.
+ */
+function runStage45VendorPricingWebhookPayloadTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    var setup = runStage45VendorPricingSetupValidation();
+    if (!setup.success) {
+      return setup;
+    }
+
+    var logSetup = VendorPricingService.ensureVendorPricingLogSheet_();
+    if (!logSetup.success) {
+      return logSetup;
+    }
+
+    var lead = LeadService.createLead({
+      fullName: 'Stage 4.5 Vendor Webhook Lead',
+      email: 'stage45-vendor-webhook@example.com',
+      company: 'MIDTS Vendor Pricing Webhook Test',
+      projectType: 'CAD/CAM',
+      source: 'Stage45VendorPricingWebhookTest',
+      notes: 'Created by runStage45VendorPricingWebhookPayloadTest.'
+    });
+    if (!lead.success) {
+      return lead;
+    }
+
+    var qualify = LeadService.markStep2Completed(lead.data.leadId, 90);
+    if (!qualify.success) {
+      return qualify;
+    }
+
+    var vendorId = UtilsService.createPrefixedId_('VEND-STAGE45-WEB-');
+    var vendorSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
+    vendorSheet.appendRow([vendorId, 'Stage 4.5 Webhook Vendor', 'stage45-webhook-vendor@example.com', 'Yes', 'Yes', 'Approved', '']);
+
+    var tokenResult = WebsiteWebhookService.getConfiguredWebhookToken_();
+    var submittedToken = tokenResult.success ? tokenResult.data.value : '';
+    var fakeEvent = {
+      parameter: {},
+      postData: {
+        type: 'application/json',
+        contents: JSON.stringify({
+          formStage: 'vendorPricing',
+          webhookToken: submittedToken,
+          leadId: lead.data.leadId,
+          vendorId: vendorId,
+          vendorCost: '875',
+          currency: 'GBP',
+          eta: '4 working days',
+          vendorNotes: 'Stage 4.5 public vendor pricing webhook test.',
+          source: 'Stage45VendorPricingWebhookPayloadTest',
+          pageUrl: 'vendor-pricing-payload-test'
+        })
+      }
+    };
+
+    var result = VendorPricingService.handlePostEvent(fakeEvent);
+    return {
+      success: result.success,
+      message: result.success ? 'Stage 4.5 vendor pricing webhook payload test passed.' : 'Stage 4.5 vendor pricing webhook payload test failed.',
+      data: {
+        setup: setup,
+        logSetup: logSetup,
+        lead: lead,
+        qualification: qualify,
+        vendorId: vendorId,
+        tokenSetup: tokenResult,
+        vendorPricingResult: result
+      }
+    };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage45VendorPricingWebhookPayloadTest', error);
+    return { success: false, message: 'Stage 4.5 vendor pricing webhook payload test failed unexpectedly.' };
+  }
+}
