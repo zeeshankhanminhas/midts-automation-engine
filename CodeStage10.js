@@ -3,23 +3,24 @@
  * STAGE: 10 (Website form webhook entry point)
  * WHAT THIS FILE DOES:
  * - Exposes doPost(e) for public website lead submissions.
- * - Routes Step 1 lead intake and Step 2 technical requirement submissions.
+ * - Routes Step 1 lead intake, Step 2 technical requirement submissions, and vendor pricing submissions.
  * - Returns JSON responses for website/webhook clients.
  * - Provides Stage 10/11 setup and payload tests.
  * DEPENDENCIES:
  * - Apps Script Web App deployment
  * - WebsiteWebhookService (WebsiteWebhookService.gs)
  * - Step2RequirementService (Step2RequirementService.gs)
+ * - VendorPricingService (VendorPricingService.gs)
  * - ConfigService (Config.gs)
  * - ErrorLogger (ErrorLogger.gs)
  */
 
 /**
  * FUNCTION: doPost
- * PURPOSE: Receive one website form submission and route it to Step 1 lead intake or Step 2 requirement intake.
+ * PURPOSE: Receive one website form submission and route it to the matching intake workflow.
  * INPUT: e (Apps Script POST event object)
  * OUTPUT: TextOutput JSON
- * SIDE EFFECTS: May append/update lead rows and write webhook audit rows.
+ * SIDE EFFECTS: May append/update lead rows, vendor pricing rows, and audit logs.
  */
 function doPost(e) {
   // ===== MAIN LOGIC =====
@@ -27,7 +28,7 @@ function doPost(e) {
     Logger.log('doPost received website webhook request.');
     var routeResult = routeWebsiteWebhookPost_(e);
     var result = routeResult.result;
-    var emailResult = routeResult.isStep2 ? null : sendWebsiteLeadAcknowledgement_(e, result);
+    var emailResult = routeResult.route === 'step1' ? sendWebsiteLeadAcknowledgement_(e, result) : null;
     if (emailResult) {
       result.data = result.data || {};
       result.data.emailNotification = emailResult;
@@ -40,7 +41,7 @@ function doPost(e) {
       success: result && result.success,
       message: result && result.message,
       leadId: result && result.data ? result.data.leadId : '',
-      route: routeResult.isStep2 ? 'step2' : 'step1',
+      route: routeResult.route,
       emailNotification: result && result.data ? result.data.emailNotification : null
     }));
     return createWebsiteWebhookJsonResponse_(result);
@@ -58,16 +59,20 @@ function doPost(e) {
  * FUNCTION: routeWebsiteWebhookPost_
  * PURPOSE: Internal helper to route public website posts by explicit form stage.
  * INPUT: e (Apps Script POST event object)
- * OUTPUT: { isStep2: boolean, result: object }
+ * OUTPUT: { route: string, isStep2: boolean, result: object }
  * SIDE EFFECTS: Downstream handler performs writes.
  */
 function routeWebsiteWebhookPost_(e) {
   // ===== MAIN LOGIC =====
   var payloadResult = WebsiteWebhookService.parsePostEvent_(e);
-  if (payloadResult.success && Step2RequirementService.isStep2Payload(payloadResult.data.payload || {})) {
-    return { isStep2: true, result: Step2RequirementService.handlePostEvent(e) };
+  var payload = payloadResult.success ? payloadResult.data.payload || {} : {};
+  if (payloadResult.success && Step2RequirementService.isStep2Payload(payload)) {
+    return { route: 'step2', isStep2: true, result: Step2RequirementService.handlePostEvent(e) };
   }
-  return { isStep2: false, result: WebsiteWebhookService.handlePostEvent(e) };
+  if (payloadResult.success && VendorPricingService.isVendorPricingPayload(payload)) {
+    return { route: 'vendorPricing', isStep2: false, result: VendorPricingService.handlePostEvent(e) };
+  }
+  return { route: 'step1', isStep2: false, result: WebsiteWebhookService.handlePostEvent(e) };
 }
 
 /**
