@@ -56,6 +56,11 @@ var ConfigService = {
   // Example: STEP2_FORM_BASE_URL = "https://zeeshankhanminhas.github.io/NEW-MIDTS/step-2/"
   STEP2_FORM_BASE_URL_KEY: 'STEP2_FORM_BASE_URL',
 
+  // REQUIRED: Set this value before sending vendor pricing request emails.
+  // Uses vendor pricing frontend URL from Settings sheet: VENDOR_PRICING_FORM_BASE_URL
+  // Example: VENDOR_PRICING_FORM_BASE_URL = "https://zeeshankhanminhas.github.io/NEW-MIDTS/vendor-pricing/"
+  VENDOR_PRICING_FORM_BASE_URL_KEY: 'VENDOR_PRICING_FORM_BASE_URL',
+
   /**
    * FUNCTION: getRequiredSettingKeys
    * PURPOSE: Return the canonical list of required configuration keys for full production readiness.
@@ -70,7 +75,8 @@ var ConfigService = {
       this.SLACK_WEBHOOK_URL_KEY,
       this.ROOT_DRIVE_FOLDER_ID_KEY,
       this.WEBSITE_WEBHOOK_TOKEN_KEY,
-      this.STEP2_FORM_BASE_URL_KEY
+      this.STEP2_FORM_BASE_URL_KEY,
+      this.VENDOR_PRICING_FORM_BASE_URL_KEY
     ];
   },
 
