@@ -10,6 +10,7 @@
  * - Uses Google Sheet tab: Email Logs
  * - Optional test recipient from Settings sheet: TEST_EMAIL_RECIPIENT
  * - Step 2 form base URL from Settings sheet: STEP2_FORM_BASE_URL
+ * - Vendor pricing form base URL from Settings sheet: VENDOR_PRICING_FORM_BASE_URL
  * - UrlFetchApp external API access
  * - DatabaseService (DatabaseService.gs)
  * - ConfigService (Config.gs)
@@ -130,6 +131,72 @@ var EmailService = {
   },
 
   /**
+   * FUNCTION: sendVendorPricingRequestEmail
+   * PURPOSE: Send sanitized project details and a pricing form link to an assigned vendor.
+   * INPUT: request (object: vendorEmail, vendorName, vendorId, lead)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Sends one Brevo email and appends one Email Logs row.
+   */
+  sendVendorPricingRequestEmail: function (request) {
+    // ===== MAIN LOGIC =====
+    try {
+      var payload = request || {};
+      var lead = payload.lead || {};
+      var vendorEmail = String(payload.vendorEmail || '').trim();
+      var vendorName = String(payload.vendorName || 'there').trim();
+      var vendorId = String(payload.vendorId || '').trim();
+      var leadId = String(lead.leadId || payload.leadId || '').trim();
+
+      if (!vendorEmail || vendorEmail.indexOf('@') === -1) {
+        return { success: false, message: 'A valid vendor email is required.' };
+      }
+      if (!vendorId || !leadId) {
+        return { success: false, message: 'vendorId and leadId are required to send the vendor pricing link.' };
+      }
+
+      var baseUrlResult = this.getSettingValue_(ConfigService.VENDOR_PRICING_FORM_BASE_URL_KEY);
+      if (!baseUrlResult.success) {
+        return baseUrlResult;
+      }
+      var pricingUrl = this.buildVendorPricingFormUrl_(baseUrlResult.data.value, leadId, vendorId);
+
+      var company = String(lead.company || 'Not specified').trim();
+      var projectType = String(lead.projectType || 'Not specified').trim();
+      var notes = String(lead.notes || 'No technical notes provided yet.').trim();
+      var qualificationStatus = String(lead.qualificationStatus || '').trim();
+      var safePricingUrl = this.escapeHtml_(pricingUrl);
+
+      var htmlContent = '<p>Hello ' + this.escapeHtml_(vendorName) + ',</p>' +
+        '<p>MIDTS has assigned you a qualified request for vendor pricing.</p>' +
+        '<p><strong>Lead reference:</strong> ' + this.escapeHtml_(leadId) + '</p>' +
+        '<p><strong>Company:</strong> ' + this.escapeHtml_(company) + '</p>' +
+        '<p><strong>Project type:</strong> ' + this.escapeHtml_(projectType) + '</p>' +
+        '<p><strong>Qualification status:</strong> ' + this.escapeHtml_(qualificationStatus || 'Qualified') + '</p>' +
+        '<p><strong>Project details:</strong><br>' + this.escapeHtml_(notes).replace(/\n/g, '<br>') + '</p>' +
+        '<p>Submit your cost, turnaround, and assumptions here: <a href="' + safePricingUrl + '">Submit vendor pricing</a>.</p>' +
+        '<p>Please do not forward this link. It is tied to your vendor assignment.</p>';
+
+      var textContent = 'Hello ' + vendorName + ', MIDTS has assigned you a qualified request for vendor pricing. ' +
+        'Lead reference: ' + leadId + '. Company: ' + company + '. Project type: ' + projectType + '. ' +
+        'Qualification status: ' + (qualificationStatus || 'Qualified') + '. Project details: ' + notes + '. ' +
+        'Submit your cost, turnaround, and assumptions here: ' + pricingUrl + '. Please do not forward this link.';
+
+      return this.sendTransactionalEmail({
+        toEmail: vendorEmail,
+        toName: vendorName,
+        subject: 'MIDTS vendor pricing request - ' + leadId,
+        htmlContent: htmlContent,
+        textContent: textContent,
+        templateKey: 'VENDOR_PRICING_REQUEST'
+      });
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('EmailService.sendVendorPricingRequestEmail', error, { request: request });
+      return { success: false, message: 'Failed to send vendor pricing request email.' };
+    }
+  },
+
+  /**
    * FUNCTION: buildStep2FormUrl_
    * PURPOSE: Internal helper to create a personalized Step 2 form link for an existing lead.
    * INPUT: baseUrl (string), leadId (string)
@@ -141,6 +208,20 @@ var EmailService = {
     var trimmedBaseUrl = String(baseUrl || '').trim();
     var separator = trimmedBaseUrl.indexOf('?') === -1 ? '?' : '&';
     return trimmedBaseUrl + separator + 'leadId=' + encodeURIComponent(String(leadId || '').trim());
+  },
+
+  /**
+   * FUNCTION: buildVendorPricingFormUrl_
+   * PURPOSE: Internal helper to create a personalized vendor pricing form link.
+   * INPUT: baseUrl (string), leadId (string), vendorId (string)
+   * OUTPUT: string
+   * SIDE EFFECTS: none
+   */
+  buildVendorPricingFormUrl_: function (baseUrl, leadId, vendorId) {
+    // ===== MAIN LOGIC =====
+    var trimmedBaseUrl = String(baseUrl || '').trim();
+    var separator = trimmedBaseUrl.indexOf('?') === -1 ? '?' : '&';
+    return trimmedBaseUrl + separator + 'leadId=' + encodeURIComponent(String(leadId || '').trim()) + '&vendorId=' + encodeURIComponent(String(vendorId || '').trim());
   },
 
   /**
