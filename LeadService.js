@@ -461,6 +461,62 @@ var LeadService = {
   },
 
   /**
+   * FUNCTION: getSanitizedVendorLeadSnapshot
+   * PURPOSE: Return lead details that are safe to share with an assigned vendor.
+   * INPUT: leadId (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: none
+   */
+  getSanitizedVendorLeadSnapshot: function (leadId) {
+    // ===== MAIN LOGIC =====
+    try {
+      var targetLeadId = String(leadId || '').trim();
+      if (!targetLeadId) {
+        return { success: false, message: 'leadId is required.' };
+      }
+
+      var ensureResult = DatabaseService.ensureLeadsSheetStructure();
+      if (!ensureResult.success) {
+        return ensureResult;
+      }
+
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.LEADS_SHEET_NAME);
+      if (!sheet) {
+        return { success: false, message: 'Leads sheet not found.' };
+      }
+
+      var values = sheet.getDataRange().getValues();
+      for (var i = 1; i < values.length; i++) {
+        if (String(values[i][0] || '').trim() === targetLeadId) {
+          return {
+            success: true,
+            message: 'Sanitized vendor lead snapshot loaded.',
+            data: {
+              lead: {
+                leadId: targetLeadId,
+                company: String(values[i][4] || '').trim(),
+                projectType: String(values[i][5] || '').trim(),
+                status: String(values[i][6] || '').trim(),
+                source: String(values[i][7] || '').trim(),
+                notes: String(values[i][8] || '').trim(),
+                qualificationStatus: String(values[i][11] || '').trim(),
+                leadScore: Number(values[i][12] || 0),
+                highValueFlag: String(values[i][13] || '').trim()
+              }
+            }
+          };
+        }
+      }
+
+      return { success: false, message: 'Lead not found for provided leadId.' };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('LeadService.getSanitizedVendorLeadSnapshot', error, { leadId: leadId });
+      return { success: false, message: 'Failed to load sanitized vendor lead snapshot.' };
+    }
+  },
+
+  /**
    * FUNCTION: appendLeadRow_
    * PURPOSE: Append a normalized lead record as one new row in Leads sheet.
    * INPUT: normalizedLead (object)
