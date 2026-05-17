@@ -114,7 +114,7 @@ function runStage45VendorPricingWorkflowTest() {
     var vendorSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
     vendorSheet.appendRow([vendorId, 'Stage 4.5 Eligible Vendor', 'stage45-vendor@example.com', 'Yes', 'Yes', 'Approved', '']);
 
-    var assignment = VendorService.assignVendorToLead(lead.data.leadId, vendorId);
+    var assignment = VendorService.assignVendorToLead(lead.data.leadId, vendorId, { sendEmail: false });
     if (!assignment.success) {
       return assignment;
     }
@@ -249,5 +249,69 @@ function runStage45VendorPricingWebhookPayloadTest() {
     // ===== ERROR HANDLING =====
     ErrorLogger.logError_('runStage45VendorPricingWebhookPayloadTest', error);
     return { success: false, message: 'Stage 4.5 vendor pricing webhook payload test failed unexpectedly.' };
+  }
+}
+
+/**
+ * FUNCTION: runStage45VendorAssignmentEmailTest
+ * PURPOSE: Verify assigning a vendor can send a sanitized pricing request email with a vendor pricing link.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: Appends one qualified test lead and vendor row; sends one Brevo email to TEST_EMAIL_RECIPIENT.
+ */
+function runStage45VendorAssignmentEmailTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    var setup = runStage45VendorPricingSetupValidation();
+    if (!setup.success) {
+      return setup;
+    }
+
+    var recipientResult = EmailService.getSettingValue_(EmailService.TEST_EMAIL_RECIPIENT_KEY);
+    if (!recipientResult.success) {
+      return recipientResult;
+    }
+
+    var lead = LeadService.createLead({
+      fullName: 'Stage 4.5 Vendor Email Lead',
+      email: 'stage45-vendor-email@example.com',
+      company: 'MIDTS Vendor Email Test',
+      projectType: 'CAD/CAM',
+      source: 'Stage45VendorAssignmentEmailTest',
+      notes: 'Sanitized vendor email test details. Share company, project type, requirement summary, and pricing link only.'
+    });
+    if (!lead.success) {
+      return lead;
+    }
+
+    var qualify = LeadService.markStep2Completed(lead.data.leadId, 91);
+    if (!qualify.success) {
+      return qualify;
+    }
+
+    var vendorId = UtilsService.createPrefixedId_('VEND-STAGE45-EMAIL-');
+    var vendorSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
+    vendorSheet.appendRow([vendorId, 'Stage 4.5 Email Test Vendor', recipientResult.data.value, 'Yes', 'Yes', 'Approved', '']);
+
+    var assignment = VendorService.assignVendorToLead(lead.data.leadId, vendorId, { sendEmail: true });
+    var emailResult = assignment.data ? assignment.data.emailNotification : null;
+
+    return {
+      success: assignment.success && emailResult && emailResult.success,
+      message: assignment.success && emailResult && emailResult.success
+        ? 'Stage 4.5 vendor assignment email test passed.'
+        : 'Stage 4.5 vendor assignment email test failed.',
+      data: {
+        setup: setup,
+        lead: lead,
+        qualification: qualify,
+        vendorId: vendorId,
+        assignment: assignment
+      }
+    };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage45VendorAssignmentEmailTest', error);
+    return { success: false, message: 'Stage 4.5 vendor assignment email test failed unexpectedly.' };
   }
 }
