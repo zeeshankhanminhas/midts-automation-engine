@@ -11,6 +11,12 @@
 
 ---
 
+## 0.1 Dependency Governance Baseline
+
+A governed dependency matrix is defined in `docs/operational-readiness/DEPENDENCY_GOVERNANCE_MATRIX.md` and should be treated as the operational gate before additional workflow implementation.
+
+---
+
 ## 1. Review Boundary and Governance Inputs
 
 This assessment intentionally does **not** refactor execution files, move files, rename functions, modify workflow logic, or implement new features.
