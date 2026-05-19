@@ -110,17 +110,24 @@ var VendorPricingService = {
     try {
       var requiredHeaders = [
         'Vendor Pricing ID',
+        'Created At',
         'Lead ID',
         'Vendor ID',
-        'Submitted At',
+        'Vendor Name',
+        'Vendor Email',
+        'Pricing Status',
         'Vendor Cost',
         'Currency',
-        'ETA',
+        'Vendor ETA',
         'Vendor Notes',
-        'Pricing Status',
-        'MIDTS Review Status',
-        'Reviewed At',
-        'MIDTS Notes'
+        'Submitted At',
+        'MIDTS Margin Type',
+        'MIDTS Margin Value',
+        'MIDTS Profit Amount',
+        'Final Customer Price',
+        'Review Status',
+        'Quote ID',
+        'Notes'
       ];
       return DatabaseService.ensureSheetAndHeaders_(this.VENDOR_PRICING_SHEET_NAME, requiredHeaders);
     } catch (error) {
@@ -236,20 +243,24 @@ var VendorPricingService = {
       }
 
       var vendorPricingId = UtilsService.createSequentialId_('VENDOR_PRICING');
-      sheet.appendRow([
-        vendorPricingId,
-        leadId,
-        vendorId,
-        new Date(),
-        vendorCost,
-        currency,
-        eta,
-        vendorNotes,
-        this.STATUS_SUBMITTED,
-        'Pending Review',
-        '',
-        ''
-      ]);
+      var columns = this.getVendorPricingColumnMap_(sheet);
+      var row = this.buildVendorPricingRow_(columns, {
+        vendorPricingId: vendorPricingId,
+        createdAt: new Date(),
+        leadId: leadId,
+        vendorId: vendorId,
+        vendorName: String(input.vendorName || '').trim(),
+        vendorEmail: String(input.vendorEmail || '').trim(),
+        pricingStatus: this.STATUS_SUBMITTED,
+        vendorCost: vendorCost,
+        currency: currency,
+        vendorEta: eta,
+        vendorNotes: vendorNotes,
+        submittedAt: new Date(),
+        reviewStatus: 'Pending Review',
+        notes: ''
+      });
+      sheet.appendRow(row);
 
       return {
         success: true,
@@ -287,7 +298,8 @@ var VendorPricingService = {
       var values = sheet.getDataRange().getValues();
       for (var i = 1; i < values.length; i++) {
         if (String(values[i][0] || '').trim() === id) {
-          var pricingStatus = String(values[i][8] || '').trim();
+          var columns = this.getVendorPricingColumnMap_(sheet);
+          var pricingStatus = String(values[i][columns.pricingStatus - 1] || '').trim();
           if (pricingStatus !== this.STATUS_SUBMITTED) {
             return {
               success: false,
@@ -296,14 +308,13 @@ var VendorPricingService = {
             };
           }
 
-          sheet.getRange(i + 1, 10).setValue(this.REVIEW_APPROVED_FOR_QUOTE);
-          sheet.getRange(i + 1, 11).setValue(new Date());
-          sheet.getRange(i + 1, 12).setValue(String(midtsNotes || '').trim());
+          sheet.getRange(i + 1, columns.reviewStatus).setValue(this.REVIEW_APPROVED_FOR_QUOTE);
+          sheet.getRange(i + 1, columns.notes).setValue(String(midtsNotes || '').trim());
 
           return {
             success: true,
             message: 'Vendor pricing approved for quote.',
-            data: { vendorPricingId: id, leadId: String(values[i][1] || '').trim(), vendorId: String(values[i][2] || '').trim() }
+            data: { vendorPricingId: id, leadId: String(values[i][columns.leadId - 1] || '').trim(), vendorId: String(values[i][columns.vendorId - 1] || '').trim() }
           };
         }
       }
@@ -339,20 +350,21 @@ var VendorPricingService = {
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.VENDOR_PRICING_SHEET_NAME);
       var values = sheet.getDataRange().getValues();
       for (var i = values.length - 1; i >= 1; i--) {
-        var rowLeadId = String(values[i][1] || '').trim();
-        var pricingStatus = String(values[i][8] || '').trim();
-        var reviewStatus = String(values[i][9] || '').trim();
+        var columns = this.getVendorPricingColumnMap_(sheet);
+        var rowLeadId = String(values[i][columns.leadId - 1] || '').trim();
+        var pricingStatus = String(values[i][columns.pricingStatus - 1] || '').trim();
+        var reviewStatus = String(values[i][columns.reviewStatus - 1] || '').trim();
         if (rowLeadId === targetLeadId && pricingStatus === this.STATUS_SUBMITTED && reviewStatus === this.REVIEW_APPROVED_FOR_QUOTE) {
           return {
             success: true,
             message: 'Approved vendor pricing found for lead.',
             data: {
-              vendorPricingId: String(values[i][0] || '').trim(),
+              vendorPricingId: String(values[i][columns.vendorPricingId - 1] || '').trim(),
               leadId: rowLeadId,
-              vendorId: String(values[i][2] || '').trim(),
-              vendorCost: Number(values[i][4] || 0),
-              currency: String(values[i][5] || '').trim(),
-              eta: String(values[i][6] || '').trim(),
+              vendorId: String(values[i][columns.vendorId - 1] || '').trim(),
+              vendorCost: Number(values[i][columns.vendorCost - 1] || 0),
+              currency: String(values[i][columns.currency - 1] || '').trim(),
+              eta: String(values[i][columns.vendorEta - 1] || '').trim(),
               rowNumber: i + 1
             }
           };
@@ -370,6 +382,67 @@ var VendorPricingService = {
       return { success: false, message: 'Failed to load approved vendor pricing.' };
     }
   },
+
+  /**
+   * FUNCTION: getVendorPricingColumnMap_
+   * PURPOSE: Resolve Vendor Pricing column indices from sheet headers for schema-safe reads/writes.
+   * INPUT: sheet (GoogleAppsScript.Spreadsheet.Sheet)
+   * OUTPUT: object (1-indexed column positions)
+   * SIDE EFFECTS: none
+   */
+  getVendorPricingColumnMap_: function (sheet) {
+    // ===== MAIN LOGIC =====
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var map = {};
+    for (var i = 0; i < headers.length; i++) {
+      map[String(headers[i] || '').trim()] = i + 1;
+    }
+    return {
+      vendorPricingId: map['Vendor Pricing ID'],
+      leadId: map['Lead ID'],
+      vendorId: map['Vendor ID'],
+      pricingStatus: map['Pricing Status'],
+      vendorCost: map['Vendor Cost'],
+      currency: map['Currency'],
+      vendorEta: map['Vendor ETA'],
+      reviewStatus: map['Review Status'],
+      notes: map['Notes']
+    };
+  },
+
+  /**
+   * FUNCTION: buildVendorPricingRow_
+   * PURPOSE: Build a full row array using current Vendor Pricing header map.
+   * INPUT: columns (object), payload (object)
+   * OUTPUT: array
+   * SIDE EFFECTS: none
+   */
+  buildVendorPricingRow_: function (columns, payload) {
+    // ===== MAIN LOGIC =====
+    var maxCol = 0;
+    Object.keys(columns).forEach(function (k) {
+      maxCol = Math.max(maxCol, Number(columns[k] || 0));
+    });
+    var row = [];
+    for (var i = 0; i < maxCol; i++) { row.push(''); }
+    var p = payload || {};
+    row[columns.vendorPricingId - 1] = p.vendorPricingId || '';
+    row[2 - 1] = p.createdAt || '';
+    row[columns.leadId - 1] = p.leadId || '';
+    row[columns.vendorId - 1] = p.vendorId || '';
+    row[5 - 1] = p.vendorName || '';
+    row[6 - 1] = p.vendorEmail || '';
+    row[columns.pricingStatus - 1] = p.pricingStatus || '';
+    row[columns.vendorCost - 1] = p.vendorCost || '';
+    row[columns.currency - 1] = p.currency || '';
+    row[columns.vendorEta - 1] = p.vendorEta || '';
+    row[11 - 1] = p.vendorNotes || '';
+    row[12 - 1] = p.submittedAt || '';
+    row[columns.reviewStatus - 1] = p.reviewStatus || '';
+    row[columns.notes - 1] = p.notes || '';
+    return row;
+  },
+
 
   /**
    * FUNCTION: getField_
