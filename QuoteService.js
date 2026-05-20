@@ -202,6 +202,8 @@ var QuoteService = {
 
       // Uses unique ID prefix QUOTE- for quote entities.
       var quoteId = UtilsService.createPrefixedId_('QUOTE-');
+      var quoteCurrency = String(pricingResult.data.currency || requestedCurrency || 'GBP').trim();
+
       sheet.appendRow([
         quoteId,
         leadId,

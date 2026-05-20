@@ -277,7 +277,7 @@ var VendorPricingService = {
   /**
    * FUNCTION: approveVendorPricingForQuote
    * PURPOSE: Mark submitted vendor pricing as reviewed and approved for quote generation.
-   * INPUT: vendorPricingId (string), midtsNotes (string, optional)
+   * INPUT: vendorPricingId (string), midtsNotes (string, optional), pricingDecision (object: marginType, marginValue)
    * OUTPUT: { success: boolean, message: string, data?: object }
    * SIDE EFFECTS: Updates one Vendor Pricing row review fields.
    */
@@ -383,8 +383,8 @@ var VendorPricingService = {
 
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.VENDOR_PRICING_SHEET_NAME);
       var values = sheet.getDataRange().getValues();
+      var columns = this.getVendorPricingColumnMap_(sheet);
       for (var i = values.length - 1; i >= 1; i--) {
-        var columns = this.getVendorPricingColumnMap_(sheet);
         var rowLeadId = String(values[i][columns.leadId - 1] || '').trim();
         var pricingStatus = String(values[i][columns.pricingStatus - 1] || '').trim();
         var reviewStatus = String(values[i][columns.reviewStatus - 1] || '').trim();
