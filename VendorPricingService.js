@@ -277,11 +277,11 @@ var VendorPricingService = {
   /**
    * FUNCTION: approveVendorPricingForQuote
    * PURPOSE: Mark submitted vendor pricing as reviewed and approved for quote generation.
-   * INPUT: vendorPricingId (string), midtsNotes (string, optional)
+   * INPUT: vendorPricingId (string), midtsNotes (string, optional), pricingDecision (object: marginType, marginValue)
    * OUTPUT: { success: boolean, message: string, data?: object }
    * SIDE EFFECTS: Updates one Vendor Pricing row review fields.
    */
-  approveVendorPricingForQuote: function (vendorPricingId, midtsNotes) {
+  approveVendorPricingForQuote: function (vendorPricingId, midtsNotes, pricingDecision) {
     // ===== MAIN LOGIC =====
     try {
       var id = String(vendorPricingId || '').trim();
@@ -308,13 +308,47 @@ var VendorPricingService = {
             };
           }
 
+          var decision = pricingDecision || {};
+          var marginType = String(decision.marginType || '').trim().toUpperCase();
+          var marginValue = Number(decision.marginValue || 0);
+          var vendorCost = Number(values[i][columns.vendorCost - 1] || 0);
+
+          if (vendorCost <= 0) {
+            return { success: false, message: 'Vendor cost must be greater than zero before approval.' };
+          }
+          if (marginType !== 'FIXED' && marginType !== 'PERCENT') {
+            return { success: false, message: 'marginType must be FIXED or PERCENT.' };
+          }
+          if (marginValue < 0) {
+            return { success: false, message: 'marginValue must be zero or greater.' };
+          }
+
+          // FIXED adds a direct currency amount. PERCENT applies a markup multiplier.
+          var finalCustomerPrice = marginType === 'FIXED'
+            ? (vendorCost + marginValue)
+            : (vendorCost * (1 + (marginValue / 100)));
+          var profitAmount = finalCustomerPrice - vendorCost;
+
+          sheet.getRange(i + 1, columns.marginType).setValue(marginType);
+          sheet.getRange(i + 1, columns.marginValue).setValue(marginValue);
+          sheet.getRange(i + 1, columns.profitAmount).setValue(profitAmount);
+          sheet.getRange(i + 1, columns.finalCustomerPrice).setValue(finalCustomerPrice);
           sheet.getRange(i + 1, columns.reviewStatus).setValue(this.REVIEW_APPROVED_FOR_QUOTE);
           sheet.getRange(i + 1, columns.notes).setValue(String(midtsNotes || '').trim());
 
           return {
             success: true,
             message: 'Vendor pricing approved for quote.',
-            data: { vendorPricingId: id, leadId: String(values[i][columns.leadId - 1] || '').trim(), vendorId: String(values[i][columns.vendorId - 1] || '').trim() }
+            data: {
+              vendorPricingId: id,
+              leadId: String(values[i][columns.leadId - 1] || '').trim(),
+              vendorId: String(values[i][columns.vendorId - 1] || '').trim(),
+              marginType: marginType,
+              marginValue: marginValue,
+              vendorCost: vendorCost,
+              finalCustomerPrice: finalCustomerPrice,
+              profitAmount: profitAmount
+            }
           };
         }
       }
@@ -349,8 +383,8 @@ var VendorPricingService = {
 
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.VENDOR_PRICING_SHEET_NAME);
       var values = sheet.getDataRange().getValues();
+      var columns = this.getVendorPricingColumnMap_(sheet);
       for (var i = values.length - 1; i >= 1; i--) {
-        var columns = this.getVendorPricingColumnMap_(sheet);
         var rowLeadId = String(values[i][columns.leadId - 1] || '').trim();
         var pricingStatus = String(values[i][columns.pricingStatus - 1] || '').trim();
         var reviewStatus = String(values[i][columns.reviewStatus - 1] || '').trim();
@@ -365,6 +399,10 @@ var VendorPricingService = {
               vendorCost: Number(values[i][columns.vendorCost - 1] || 0),
               currency: String(values[i][columns.currency - 1] || '').trim(),
               eta: String(values[i][columns.vendorEta - 1] || '').trim(),
+              marginType: String(values[i][columns.marginType - 1] || '').trim(),
+              marginValue: Number(values[i][columns.marginValue - 1] || 0),
+              profitAmount: Number(values[i][columns.profitAmount - 1] || 0),
+              finalCustomerPrice: Number(values[i][columns.finalCustomerPrice - 1] || 0),
               rowNumber: i + 1
             }
           };
@@ -405,9 +443,52 @@ var VendorPricingService = {
       vendorCost: map['Vendor Cost'],
       currency: map['Currency'],
       vendorEta: map['Vendor ETA'],
+      marginType: map['MIDTS Margin Type'],
+      marginValue: map['MIDTS Margin Value'],
+      profitAmount: map['MIDTS Profit Amount'],
+      finalCustomerPrice: map['Final Customer Price'],
       reviewStatus: map['Review Status'],
+      quoteId: map['Quote ID'],
       notes: map['Notes']
     };
+  },
+
+  /**
+   * FUNCTION: linkQuoteToVendorPricing
+   * PURPOSE: Persist the generated quote ID on the approved vendor pricing row.
+   * INPUT: vendorPricingId (string), quoteId (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Updates Quote ID field in Vendor Pricing sheet.
+   */
+  linkQuoteToVendorPricing: function (vendorPricingId, quoteId) {
+    // ===== MAIN LOGIC =====
+    try {
+      var id = String(vendorPricingId || '').trim();
+      var qid = String(quoteId || '').trim();
+      if (!id || !qid) {
+        return { success: false, message: 'vendorPricingId and quoteId are required.' };
+      }
+
+      var ensureResult = this.ensureVendorPricingSheetStructure();
+      if (!ensureResult.success) {
+        return ensureResult;
+      }
+
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.VENDOR_PRICING_SHEET_NAME);
+      var columns = this.getVendorPricingColumnMap_(sheet);
+      var values = sheet.getDataRange().getValues();
+      for (var i = 1; i < values.length; i++) {
+        if (String(values[i][columns.vendorPricingId - 1] || '').trim() === id) {
+          sheet.getRange(i + 1, columns.quoteId).setValue(qid);
+          return { success: true, message: 'Quote linked to vendor pricing.', data: { vendorPricingId: id, quoteId: qid } };
+        }
+      }
+      return { success: false, message: 'Vendor pricing not found for provided vendorPricingId.' };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('VendorPricingService.linkQuoteToVendorPricing', error, { vendorPricingId: vendorPricingId, quoteId: quoteId });
+      return { success: false, message: 'Failed to link quote to vendor pricing.' };
+    }
   },
 
   /**
