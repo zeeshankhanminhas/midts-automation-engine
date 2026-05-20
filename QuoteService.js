@@ -153,7 +153,7 @@ var QuoteService = {
     try {
       var input = payload || {};
       var leadId = String(input.leadId || '').trim();
-      var requestedCurrency = String(input.currency || '').trim();
+      var currency = String(input.currency || 'GBP').trim();
       var validUntil = input.validUntil || '';
       var notes = String(input.notes || '').trim();
 
@@ -210,7 +210,7 @@ var QuoteService = {
         new Date(),
         'Draft',
         finalCustomerPrice,
-        quoteCurrency,
+        currency,
         validUntil,
         notes
       ]);
@@ -229,7 +229,6 @@ var QuoteService = {
           vendorPricingId: pricingResult.data.vendorPricingId,
           vendorId: pricingResult.data.vendorId,
           finalCustomerPrice: finalCustomerPrice,
-          currency: quoteCurrency,
           marginType: pricingResult.data.marginType,
           marginValue: pricingResult.data.marginValue
         }

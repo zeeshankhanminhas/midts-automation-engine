@@ -631,7 +631,6 @@ var VendorPricingService = {
    * SIDE EFFECTS: Updates Quote ID field in Vendor Pricing sheet.
    */
   linkQuoteToVendorPricing: function (vendorPricingId, quoteId) {
-    // ===== MAIN LOGIC =====
     try {
       var id = String(vendorPricingId || '').trim();
       var qid = String(quoteId || '').trim();
@@ -655,7 +654,6 @@ var VendorPricingService = {
       }
       return { success: false, message: 'Vendor pricing not found for provided vendorPricingId.' };
     } catch (error) {
-      // ===== ERROR HANDLING =====
       ErrorLogger.logError_('VendorPricingService.linkQuoteToVendorPricing', error, { vendorPricingId: vendorPricingId, quoteId: quoteId });
       return { success: false, message: 'Failed to link quote to vendor pricing.' };
     }
