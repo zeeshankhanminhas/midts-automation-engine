@@ -153,17 +153,12 @@ var QuoteService = {
     try {
       var input = payload || {};
       var leadId = String(input.leadId || '').trim();
-      var amount = Number(input.amount || 0);
-      var currency = String(input.currency || 'GBP').trim();
+      var requestedCurrency = String(input.currency || '').trim();
       var validUntil = input.validUntil || '';
       var notes = String(input.notes || '').trim();
 
       if (!leadId) {
         return { success: false, message: 'leadId is required.' };
-      }
-
-      if (amount <= 0) {
-        return { success: false, message: 'amount must be greater than zero.' };
       }
 
       // Ensure Quotes sheet exists early so operations can verify structure even when gating blocks writes.
@@ -187,6 +182,18 @@ var QuoteService = {
         return pricingResult;
       }
 
+      var finalCustomerPrice = Number(pricingResult.data.finalCustomerPrice || 0);
+      if (finalCustomerPrice <= 0) {
+        return {
+          success: false,
+          message: 'Approved vendor pricing is missing Final Customer Price. Apply MIDTS margin before quote generation.',
+          data: {
+            leadId: leadId,
+            vendorPricingId: pricingResult.data.vendorPricingId
+          }
+        };
+      }
+
       var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
       var sheet = spreadsheet.getSheetByName(ConfigService.QUOTES_SHEET_NAME);
       if (!sheet) {
@@ -195,16 +202,23 @@ var QuoteService = {
 
       // Uses unique ID prefix QUOTE- for quote entities.
       var quoteId = UtilsService.createPrefixedId_('QUOTE-');
+      var quoteCurrency = String(pricingResult.data.currency || requestedCurrency || 'GBP').trim();
+
       sheet.appendRow([
         quoteId,
         leadId,
         new Date(),
         'Draft',
-        amount,
-        currency,
+        finalCustomerPrice,
+        quoteCurrency,
         validUntil,
         notes
       ]);
+
+      var linkResult = VendorPricingService.linkQuoteToVendorPricing(pricingResult.data.vendorPricingId, quoteId);
+      if (!linkResult.success) {
+        return linkResult;
+      }
 
       return {
         success: true,
@@ -213,7 +227,11 @@ var QuoteService = {
           quoteId: quoteId,
           leadId: leadId,
           vendorPricingId: pricingResult.data.vendorPricingId,
-          vendorId: pricingResult.data.vendorId
+          vendorId: pricingResult.data.vendorId,
+          finalCustomerPrice: finalCustomerPrice,
+          currency: quoteCurrency,
+          marginType: pricingResult.data.marginType,
+          marginValue: pricingResult.data.marginValue
         }
       };
     } catch (error) {

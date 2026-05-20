@@ -21,6 +21,7 @@ var VendorPricingService = {
   // Uses Google Sheet tab: Vendor Pricing
   VENDOR_PRICING_SHEET_NAME: 'Vendor Pricing',
   VENDOR_PRICING_LOGS_SHEET_NAME: 'Vendor Pricing Logs',
+  STATUS_REQUESTED: 'Requested',
   STATUS_SUBMITTED: 'Submitted',
   REVIEW_APPROVED_FOR_QUOTE: 'Approved for Quote',
 
@@ -223,8 +224,11 @@ var VendorPricingService = {
       if (!leadId || !vendorId) {
         return { success: false, message: 'leadId and vendorId are required.' };
       }
-      if (vendorCost <= 0) {
-        return { success: false, message: 'vendorCost must be greater than zero.' };
+      if (!String(input.vendorCost || '').trim() || isNaN(vendorCost) || vendorCost <= 0) {
+        return { success: false, message: 'vendorCost must be a numeric value greater than zero.' };
+      }
+      if (!eta) {
+        return { success: false, message: 'eta is required for vendor pricing submission.' };
       }
 
       var leadGate = LeadService.canLeadProceedToQuote(leadId);
@@ -242,31 +246,37 @@ var VendorPricingService = {
         return { success: false, message: 'Vendor Pricing sheet not found.' };
       }
 
-      var vendorPricingId = UtilsService.createSequentialId_('VENDOR_PRICING');
       var columns = this.getVendorPricingColumnMap_(sheet);
-      var row = this.buildVendorPricingRow_(columns, {
-        vendorPricingId: vendorPricingId,
-        createdAt: new Date(),
-        leadId: leadId,
-        vendorId: vendorId,
-        vendorName: String(input.vendorName || '').trim(),
-        vendorEmail: String(input.vendorEmail || '').trim(),
-        pricingStatus: this.STATUS_SUBMITTED,
-        vendorCost: vendorCost,
-        currency: currency,
-        vendorEta: eta,
-        vendorNotes: vendorNotes,
-        submittedAt: new Date(),
-        reviewStatus: 'Pending Review',
-        notes: ''
-      });
-      sheet.appendRow(row);
+      var now = new Date();
+      var requestedRow = this.findOpenPricingRequestRow_(sheet, columns, leadId, vendorId);
+      if (!requestedRow.success) {
+        return requestedRow;
+      }
+      if (requestedRow.data.rowNumber > 0) {
+        sheet.getRange(requestedRow.data.rowNumber, columns.vendorCost).setValue(vendorCost);
+        sheet.getRange(requestedRow.data.rowNumber, columns.currency).setValue(currency);
+        sheet.getRange(requestedRow.data.rowNumber, columns.vendorEta).setValue(eta);
+        sheet.getRange(requestedRow.data.rowNumber, 11).setValue(vendorNotes);
+        sheet.getRange(requestedRow.data.rowNumber, columns.pricingStatus).setValue(this.STATUS_SUBMITTED);
+        sheet.getRange(requestedRow.data.rowNumber, 12).setValue(now);
+        sheet.getRange(requestedRow.data.rowNumber, columns.reviewStatus).setValue('Pending Review');
+        return {
+          success: true,
+          message: 'Vendor pricing submitted successfully.',
+          data: { vendorPricingId: requestedRow.data.vendorPricingId, leadId: leadId, vendorId: vendorId, updatedExistingRequest: true }
+        };
+      }
 
-      return {
-        success: true,
-        message: 'Vendor pricing submitted successfully.',
-        data: { vendorPricingId: vendorPricingId, leadId: leadId, vendorId: vendorId }
-      };
+      var existingSubmitted = this.findLatestPricingRowForLeadVendor_(sheet, columns, leadId, vendorId, this.STATUS_SUBMITTED);
+      if (existingSubmitted.data.rowNumber > 0) {
+        return {
+          success: false,
+          message: 'A submitted vendor pricing response already exists for this lead/vendor request.',
+          data: { vendorPricingId: existingSubmitted.data.vendorPricingId, rowNumber: existingSubmitted.data.rowNumber }
+        };
+      }
+
+      return { success: false, message: 'No active vendor pricing request found for this lead/vendor pair.' };
     } catch (error) {
       // ===== ERROR HANDLING =====
       ErrorLogger.logError_('VendorPricingService.submitVendorPricing', error, { payload: payload });
@@ -275,13 +285,173 @@ var VendorPricingService = {
   },
 
   /**
+   * FUNCTION: hasActivePricingRequestForLeadVendor
+   * PURPOSE: Prevent duplicate active pricing requests for the same lead/vendor pair.
+   * INPUT: leadId (string), vendorId (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: none
+   */
+  hasActivePricingRequestForLeadVendor: function (leadId, vendorId) {
+    // ===== MAIN LOGIC =====
+    try {
+      var targetLeadId = String(leadId || '').trim();
+      var targetVendorId = String(vendorId || '').trim();
+      if (!targetLeadId || !targetVendorId) {
+        return { success: false, message: 'leadId and vendorId are required.' };
+      }
+
+      var ensureResult = this.ensureVendorPricingSheetStructure();
+      if (!ensureResult.success) {
+        return ensureResult;
+      }
+
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.VENDOR_PRICING_SHEET_NAME);
+      if (!sheet) {
+        return { success: false, message: 'Vendor Pricing sheet not found.' };
+      }
+
+      var columns = this.getVendorPricingColumnMap_(sheet);
+      var values = sheet.getDataRange().getValues();
+      var activeStatuses = { Requested: true, Submitted: true, 'Under Review': true, Approved: true };
+      for (var i = values.length - 1; i >= 1; i--) {
+        var rowLeadId = String(values[i][columns.leadId - 1] || '').trim();
+        var rowVendorId = String(values[i][columns.vendorId - 1] || '').trim();
+        var rowStatus = String(values[i][columns.pricingStatus - 1] || '').trim();
+        if (rowLeadId === targetLeadId && rowVendorId === targetVendorId && activeStatuses[rowStatus]) {
+          return {
+            success: true,
+            message: 'Active vendor pricing request exists for lead/vendor pair.',
+            data: {
+              hasActiveRequest: true,
+              vendorPricingId: String(values[i][columns.vendorPricingId - 1] || '').trim(),
+              pricingStatus: rowStatus,
+              rowNumber: i + 1
+            }
+          };
+        }
+      }
+
+      return { success: true, message: 'No active vendor pricing request exists for lead/vendor pair.', data: { hasActiveRequest: false } };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('VendorPricingService.hasActivePricingRequestForLeadVendor', error, { leadId: leadId, vendorId: vendorId });
+      return { success: false, message: 'Failed to verify active vendor pricing requests.' };
+    }
+  },
+
+  /**
+   * FUNCTION: findOpenPricingRequestRow_
+   * PURPOSE: Locate the latest open Requested pricing request row for a lead/vendor pair.
+   * INPUT: sheet (Sheet), columns (object), leadId (string), vendorId (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: none
+   */
+  findOpenPricingRequestRow_: function (sheet, columns, leadId, vendorId) {
+    // ===== MAIN LOGIC =====
+    return this.findLatestPricingRowForLeadVendor_(sheet, columns, leadId, vendorId, this.STATUS_REQUESTED);
+  },
+
+  /**
+   * FUNCTION: findLatestPricingRowForLeadVendor_
+   * PURPOSE: Find latest Vendor Pricing row by lead/vendor/status for reliable response intake gating.
+   * INPUT: sheet (Sheet), columns (object), leadId (string), vendorId (string), pricingStatus (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: none
+   */
+  findLatestPricingRowForLeadVendor_: function (sheet, columns, leadId, vendorId, pricingStatus) {
+    // ===== MAIN LOGIC =====
+    var values = sheet.getDataRange().getValues();
+    for (var i = values.length - 1; i >= 1; i--) {
+      var rowLeadId = String(values[i][columns.leadId - 1] || '').trim();
+      var rowVendorId = String(values[i][columns.vendorId - 1] || '').trim();
+      var rowStatus = String(values[i][columns.pricingStatus - 1] || '').trim();
+      if (rowLeadId === String(leadId || '').trim() &&
+        rowVendorId === String(vendorId || '').trim() &&
+        rowStatus === String(pricingStatus || '').trim()) {
+        return {
+          success: true,
+          message: 'Vendor pricing row found.',
+          data: { rowNumber: i + 1, vendorPricingId: String(values[i][columns.vendorPricingId - 1] || '').trim() }
+        };
+      }
+    }
+    return { success: true, message: 'Vendor pricing row not found.', data: { rowNumber: 0, vendorPricingId: '' } };
+  },
+
+  /**
+   * FUNCTION: createVendorPricingDispatchRecord
+   * PURPOSE: Create a Requested pricing row when MIDTS dispatches a pricing request to a vendor.
+   * INPUT: payload (object: leadId, vendorId, vendorName, vendorEmail, currency, eta, notes)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Appends one Vendor Pricing row with Pricing Status Requested.
+   */
+  createVendorPricingDispatchRecord: function (payload) {
+    // ===== MAIN LOGIC =====
+    try {
+      var input = payload || {};
+      var leadId = String(input.leadId || '').trim();
+      var vendorId = String(input.vendorId || '').trim();
+      if (!leadId || !vendorId) {
+        return { success: false, message: 'leadId and vendorId are required.' };
+      }
+
+      var ensureResult = this.ensureVendorPricingSheetStructure();
+      if (!ensureResult.success) {
+        return ensureResult;
+      }
+
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.VENDOR_PRICING_SHEET_NAME);
+      if (!sheet) {
+        return { success: false, message: 'Vendor Pricing sheet not found.' };
+      }
+
+      var columns = this.getVendorPricingColumnMap_(sheet);
+      var vendorPricingId = UtilsService.createSequentialId_('VENDOR_PRICING');
+      var dispatchedAt = new Date();
+      var row = this.buildVendorPricingRow_(columns, {
+        vendorPricingId: vendorPricingId,
+        createdAt: dispatchedAt,
+        leadId: leadId,
+        vendorId: vendorId,
+        vendorName: String(input.vendorName || '').trim(),
+        vendorEmail: String(input.vendorEmail || '').trim(),
+        pricingStatus: this.STATUS_REQUESTED,
+        vendorCost: '',
+        currency: String(input.currency || 'GBP').trim(),
+        vendorEta: String(input.eta || '').trim(),
+        vendorNotes: String(input.notes || '').trim(),
+        submittedAt: dispatchedAt,
+        reviewStatus: 'Pending Review',
+        notes: 'Pricing request dispatched by MIDTS.'
+      });
+      sheet.appendRow(row);
+
+      return {
+        success: true,
+        message: 'Vendor pricing dispatch record created.',
+        data: {
+          vendorPricingId: vendorPricingId,
+          leadId: leadId,
+          vendorId: vendorId,
+          pricingStatus: this.STATUS_REQUESTED,
+          dispatchedAt: dispatchedAt
+        }
+      };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('VendorPricingService.createVendorPricingDispatchRecord', error, { payload: payload });
+      return { success: false, message: 'Failed to create vendor pricing dispatch record.' };
+    }
+  },
+
+  /**
    * FUNCTION: approveVendorPricingForQuote
    * PURPOSE: Mark submitted vendor pricing as reviewed and approved for quote generation.
-   * INPUT: vendorPricingId (string), midtsNotes (string, optional)
+   * INPUT: vendorPricingId (string), midtsNotes (string, optional), pricingDecision (object: marginType, marginValue)
    * OUTPUT: { success: boolean, message: string, data?: object }
    * SIDE EFFECTS: Updates one Vendor Pricing row review fields.
    */
-  approveVendorPricingForQuote: function (vendorPricingId, midtsNotes) {
+  approveVendorPricingForQuote: function (vendorPricingId, midtsNotes, pricingDecision) {
     // ===== MAIN LOGIC =====
     try {
       var id = String(vendorPricingId || '').trim();
@@ -308,13 +478,47 @@ var VendorPricingService = {
             };
           }
 
+          var decision = pricingDecision || {};
+          var marginType = String(decision.marginType || '').trim().toUpperCase();
+          var marginValue = Number(decision.marginValue || 0);
+          var vendorCost = Number(values[i][columns.vendorCost - 1] || 0);
+
+          if (vendorCost <= 0) {
+            return { success: false, message: 'Vendor cost must be greater than zero before approval.' };
+          }
+          if (marginType !== 'FIXED' && marginType !== 'PERCENT') {
+            return { success: false, message: 'marginType must be FIXED or PERCENT.' };
+          }
+          if (marginValue < 0) {
+            return { success: false, message: 'marginValue must be zero or greater.' };
+          }
+
+          // FIXED adds a direct currency amount. PERCENT applies a markup multiplier.
+          var finalCustomerPrice = marginType === 'FIXED'
+            ? (vendorCost + marginValue)
+            : (vendorCost * (1 + (marginValue / 100)));
+          var profitAmount = finalCustomerPrice - vendorCost;
+
+          sheet.getRange(i + 1, columns.marginType).setValue(marginType);
+          sheet.getRange(i + 1, columns.marginValue).setValue(marginValue);
+          sheet.getRange(i + 1, columns.profitAmount).setValue(profitAmount);
+          sheet.getRange(i + 1, columns.finalCustomerPrice).setValue(finalCustomerPrice);
           sheet.getRange(i + 1, columns.reviewStatus).setValue(this.REVIEW_APPROVED_FOR_QUOTE);
           sheet.getRange(i + 1, columns.notes).setValue(String(midtsNotes || '').trim());
 
           return {
             success: true,
             message: 'Vendor pricing approved for quote.',
-            data: { vendorPricingId: id, leadId: String(values[i][columns.leadId - 1] || '').trim(), vendorId: String(values[i][columns.vendorId - 1] || '').trim() }
+            data: {
+              vendorPricingId: id,
+              leadId: String(values[i][columns.leadId - 1] || '').trim(),
+              vendorId: String(values[i][columns.vendorId - 1] || '').trim(),
+              marginType: marginType,
+              marginValue: marginValue,
+              vendorCost: vendorCost,
+              finalCustomerPrice: finalCustomerPrice,
+              profitAmount: profitAmount
+            }
           };
         }
       }
@@ -349,8 +553,8 @@ var VendorPricingService = {
 
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.VENDOR_PRICING_SHEET_NAME);
       var values = sheet.getDataRange().getValues();
+      var columns = this.getVendorPricingColumnMap_(sheet);
       for (var i = values.length - 1; i >= 1; i--) {
-        var columns = this.getVendorPricingColumnMap_(sheet);
         var rowLeadId = String(values[i][columns.leadId - 1] || '').trim();
         var pricingStatus = String(values[i][columns.pricingStatus - 1] || '').trim();
         var reviewStatus = String(values[i][columns.reviewStatus - 1] || '').trim();
@@ -365,6 +569,10 @@ var VendorPricingService = {
               vendorCost: Number(values[i][columns.vendorCost - 1] || 0),
               currency: String(values[i][columns.currency - 1] || '').trim(),
               eta: String(values[i][columns.vendorEta - 1] || '').trim(),
+              marginType: String(values[i][columns.marginType - 1] || '').trim(),
+              marginValue: Number(values[i][columns.marginValue - 1] || 0),
+              profitAmount: Number(values[i][columns.profitAmount - 1] || 0),
+              finalCustomerPrice: Number(values[i][columns.finalCustomerPrice - 1] || 0),
               rowNumber: i + 1
             }
           };
@@ -405,9 +613,52 @@ var VendorPricingService = {
       vendorCost: map['Vendor Cost'],
       currency: map['Currency'],
       vendorEta: map['Vendor ETA'],
+      marginType: map['MIDTS Margin Type'],
+      marginValue: map['MIDTS Margin Value'],
+      profitAmount: map['MIDTS Profit Amount'],
+      finalCustomerPrice: map['Final Customer Price'],
       reviewStatus: map['Review Status'],
+      quoteId: map['Quote ID'],
       notes: map['Notes']
     };
+  },
+
+  /**
+   * FUNCTION: linkQuoteToVendorPricing
+   * PURPOSE: Persist the generated quote ID on the approved vendor pricing row.
+   * INPUT: vendorPricingId (string), quoteId (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Updates Quote ID field in Vendor Pricing sheet.
+   */
+  linkQuoteToVendorPricing: function (vendorPricingId, quoteId) {
+    // ===== MAIN LOGIC =====
+    try {
+      var id = String(vendorPricingId || '').trim();
+      var qid = String(quoteId || '').trim();
+      if (!id || !qid) {
+        return { success: false, message: 'vendorPricingId and quoteId are required.' };
+      }
+
+      var ensureResult = this.ensureVendorPricingSheetStructure();
+      if (!ensureResult.success) {
+        return ensureResult;
+      }
+
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.VENDOR_PRICING_SHEET_NAME);
+      var columns = this.getVendorPricingColumnMap_(sheet);
+      var values = sheet.getDataRange().getValues();
+      for (var i = 1; i < values.length; i++) {
+        if (String(values[i][columns.vendorPricingId - 1] || '').trim() === id) {
+          sheet.getRange(i + 1, columns.quoteId).setValue(qid);
+          return { success: true, message: 'Quote linked to vendor pricing.', data: { vendorPricingId: id, quoteId: qid } };
+        }
+      }
+      return { success: false, message: 'Vendor pricing not found for provided vendorPricingId.' };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('VendorPricingService.linkQuoteToVendorPricing', error, { vendorPricingId: vendorPricingId, quoteId: quoteId });
+      return { success: false, message: 'Failed to link quote to vendor pricing.' };
+    }
   },
 
   /**
