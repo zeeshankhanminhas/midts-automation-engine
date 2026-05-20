@@ -131,14 +131,17 @@ function runStage45VendorPricingWorkflowTest() {
       return vendorPricing;
     }
 
-    var pricingApproval = VendorPricingService.approveVendorPricingForQuote(vendorPricing.data.vendorPricingId, 'Approved for Stage 4.5 workflow test.');
+    var pricingApproval = VendorPricingService.approveVendorPricingForQuote(
+      vendorPricing.data.vendorPricingId,
+      'Approved for Stage 4.5 workflow test.',
+      { marginType: 'PERCENT', marginValue: 100 }
+    );
     if (!pricingApproval.success) {
       return pricingApproval;
     }
 
     var quote = QuoteService.createQuoteForLead({
       leadId: lead.data.leadId,
-      amount: 1900,
       currency: 'GBP',
       validUntil: '',
       notes: 'Quote created after approved vendor pricing.'
