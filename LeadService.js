@@ -320,6 +320,150 @@ var LeadService = {
     }
   },
 
+  /**
+   * FUNCTION: sendStep2ReminderForLead
+   * PURPOSE: Send exactly one Step 2 reminder for a lead/stage and stamp the Leads sheet only after a successful email send.
+   * INPUT: leadId (string), reminderStage (string: 2h|24h|72h)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: May send one Brevo email, append one Email Logs row, and update reminder columns on one lead row.
+   */
+  sendStep2ReminderForLead: function (leadId, reminderStage) {
+    // ===== MAIN LOGIC =====
+    try {
+      var targetLeadId = String(leadId || '').trim();
+      if (!targetLeadId) {
+        return { success: false, message: 'leadId is required.' };
+      }
+
+      var stageConfigResult = this.getStep2ReminderStageConfig_(reminderStage);
+      if (!stageConfigResult.success) {
+        return stageConfigResult;
+      }
+      var stageConfig = stageConfigResult.data.config;
+
+      var ensureResult = DatabaseService.ensureLeadsSheetStructure();
+      if (!ensureResult.success) {
+        return ensureResult;
+      }
+
+      var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = spreadsheet.getSheetByName(ConfigService.LEADS_SHEET_NAME);
+      if (!sheet) {
+        return { success: false, message: 'Leads sheet not found.' };
+      }
+
+      var values = sheet.getDataRange().getValues();
+      for (var i = 1; i < values.length; i++) {
+        if (String(values[i][0] || '').trim() !== targetLeadId) {
+          continue;
+        }
+
+        var rowNumber = i + 1;
+        var row = values[i];
+        var createdAt = row[1];
+        var step2CompletedAt = row[10];
+        var alreadySentAt = row[stageConfig.sentIndex];
+
+        if (step2CompletedAt instanceof Date) {
+          sheet.getRange(rowNumber, 18).setValue('Closed');
+          sheet.getRange(rowNumber, 20).setValue('Closed - Step 2 Complete');
+          return {
+            success: false,
+            message: 'Step 2 is already complete; reminder was not sent.',
+            data: { leadId: targetLeadId, reminderStage: stageConfig.stage, skipped: true, reason: 'STEP_2_COMPLETE' }
+          };
+        }
+
+        if (alreadySentAt) {
+          return {
+            success: false,
+            message: 'Reminder already sent for this stage; duplicate was blocked.',
+            data: { leadId: targetLeadId, reminderStage: stageConfig.stage, skipped: true, reason: 'ALREADY_SENT' }
+          };
+        }
+
+        if (!(createdAt instanceof Date)) {
+          return {
+            success: false,
+            message: 'Lead Created At value is invalid; reminder was not sent.',
+            data: { leadId: targetLeadId, reminderStage: stageConfig.stage, skipped: true, reason: 'INVALID_CREATED_AT' }
+          };
+        }
+
+        var elapsedHours = (new Date().getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        if (elapsedHours < stageConfig.thresholdHours) {
+          return {
+            success: false,
+            message: 'Reminder threshold is not due yet; reminder was not sent.',
+            data: { leadId: targetLeadId, reminderStage: stageConfig.stage, elapsedHours: elapsedHours, skipped: true, reason: 'NOT_DUE' }
+          };
+        }
+
+        var emailResult = EmailService.sendStep2ReminderEmail({
+          leadId: targetLeadId,
+          fullName: String(row[2] || '').trim(),
+          email: String(row[3] || '').trim(),
+          company: String(row[4] || '').trim(),
+          projectType: String(row[5] || '').trim()
+        }, stageConfig.stage);
+
+        if (!emailResult.success) {
+          return {
+            success: false,
+            message: 'Step 2 reminder email failed; reminder timestamp was not updated.',
+            data: { leadId: targetLeadId, reminderStage: stageConfig.stage, email: emailResult }
+          };
+        }
+
+        var sentAt = new Date();
+        sheet.getRange(rowNumber, stageConfig.sentColumn).setValue(sentAt);
+        sheet.getRange(rowNumber, 18).setValue(stageConfig.lastStage);
+        sheet.getRange(rowNumber, 20).setValue(stageConfig.status);
+
+        return {
+          success: true,
+          message: 'Step 2 reminder sent and stamped successfully.',
+          data: {
+            leadId: targetLeadId,
+            reminderStage: stageConfig.stage,
+            sentAt: sentAt,
+            email: emailResult,
+            reminderStatus: stageConfig.status
+          }
+        };
+      }
+
+      return { success: false, message: 'Lead not found for provided leadId.' };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('LeadService.sendStep2ReminderForLead', error, { leadId: leadId, reminderStage: reminderStage });
+      return { success: false, message: 'Failed to send Step 2 reminder for lead.' };
+    }
+  },
+
+  /**
+   * FUNCTION: getStep2ReminderStageConfig_
+   * PURPOSE: Internal helper mapping reminder stage names to Leads sheet columns and status values.
+   * INPUT: reminderStage (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: none
+   */
+  getStep2ReminderStageConfig_: function (reminderStage) {
+    // ===== MAIN LOGIC =====
+    var stage = String(reminderStage || '').trim().toLowerCase();
+    var configs = {
+      '2h': { stage: '2h', thresholdHours: 2, sentColumn: 15, sentIndex: 14, lastStage: '2h Sent', status: 'Reminder 2h Sent' },
+      '24h': { stage: '24h', thresholdHours: 24, sentColumn: 16, sentIndex: 15, lastStage: '24h Sent', status: 'Reminder 24h Sent' },
+      '72h': { stage: '72h', thresholdHours: 72, sentColumn: 17, sentIndex: 16, lastStage: '72h Sent', status: 'Reminder 72h Sent' }
+    };
+
+    if (!configs[stage]) {
+      return { success: false, message: 'Invalid Step 2 reminder stage. Use 2h, 24h, or 72h.' };
+    }
+
+    return { success: true, message: 'Step 2 reminder stage config loaded.', data: { config: configs[stage] } };
+  },
+
 
   /**
    * FUNCTION: processReminderDueLeads
