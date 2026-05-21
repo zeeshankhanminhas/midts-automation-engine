@@ -326,3 +326,157 @@ function runStage45VendorAssignmentEmailTest() {
     return { success: false, message: 'Stage 4.5 vendor assignment email test failed unexpectedly.' };
   }
 }
+
+/**
+ * FUNCTION: runStage45VendorPricingDispatchReliabilityTest
+ * PURPOSE: Verify dispatch logging, duplicate prevention, and failed dispatch handling for vendor pricing requests.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: Appends test lead/vendor rows and vendor pricing/log records for dispatch reliability validation.
+ */
+function runStage45VendorPricingDispatchReliabilityTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    var testTag = '[TEST][Stage4.5][DispatchReliability]';
+    var runStamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+    var setup = runStage45VendorPricingSetupValidation();
+    if (!setup.success) {
+      return setup;
+    }
+
+    var logSetup = VendorPricingService.ensureVendorPricingLogSheet_();
+    if (!logSetup.success) {
+      return logSetup;
+    }
+
+    var lead = LeadService.createLead({
+      fullName: testTag + ' Lead ' + runStamp,
+      email: 'test-stage45-dispatch-' + runStamp + '@example.com',
+      company: testTag + ' MIDTS Dispatch Test',
+      projectType: 'CAD/CAM',
+      source: 'TEST_Stage45DispatchReliability_' + runStamp,
+      notes: testTag + ' Safe to delete.'
+    });
+    if (!lead.success) {
+      return lead;
+    }
+    var qualify = LeadService.markStep2Completed(lead.data.leadId, 92);
+    if (!qualify.success) {
+      return qualify;
+    }
+
+    var vendorSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
+    var goodVendorId = UtilsService.createPrefixedId_('VEND-STAGE45-DISP-TEST-');
+    vendorSheet.appendRow([goodVendorId, testTag + ' Eligible Vendor', 'test-stage45-dispatch-vendor-' + runStamp + '@example.com', 'Yes', 'Yes', 'Approved', testTag + ' Safe to delete']);
+
+    var firstDispatch = VendorService.assignVendorToLead(lead.data.leadId, goodVendorId, { sendEmail: true });
+    var duplicateDispatch = VendorService.assignVendorToLead(lead.data.leadId, goodVendorId, { sendEmail: true });
+
+    var badVendorId = UtilsService.createPrefixedId_('VEND-STAGE45-DISP-NOMAIL-TEST-');
+    vendorSheet.appendRow([badVendorId, testTag + ' Missing Email Vendor', '', 'Yes', 'Yes', 'Approved', testTag + ' Safe to delete']);
+    var failedDispatch = VendorService.assignVendorToLead(lead.data.leadId, badVendorId, { sendEmail: true });
+
+    return {
+      success: firstDispatch.success && !duplicateDispatch.success && !failedDispatch.success,
+      message: 'Stage 4.5 vendor pricing dispatch reliability test completed.',
+      data: {
+        setup: setup,
+        logSetup: logSetup,
+        lead: lead,
+        qualification: qualify,
+        firstDispatch: firstDispatch,
+        duplicateDispatch: duplicateDispatch,
+        failedDispatch: failedDispatch
+      }
+    };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage45VendorPricingDispatchReliabilityTest', error);
+    return { success: false, message: 'Stage 4.5 vendor pricing dispatch reliability test failed unexpectedly.' };
+  }
+}
+
+/**
+ * FUNCTION: runStage45VendorPricingResponseIntakeHardeningTest
+ * PURPOSE: Verify valid response acceptance plus invalid token, duplicate, and invalid price rejection/logging.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: Appends test artifacts and Vendor Pricing/Vendor Pricing Logs rows.
+ */
+function runStage45VendorPricingResponseIntakeHardeningTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    var testTag = '[TEST][Stage4.5][ResponseHardening]';
+    var runStamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+    var setup = runStage45VendorPricingSetupValidation();
+    if (!setup.success) {
+      return setup;
+    }
+
+    var lead = LeadService.createLead({
+      fullName: testTag + ' Lead ' + runStamp,
+      email: 'test-stage45-response-' + runStamp + '@example.com',
+      company: testTag + ' MIDTS Response Intake Test',
+      projectType: 'CAD/CAM',
+      source: 'TEST_Stage45ResponseHardening_' + runStamp,
+      notes: testTag + ' Safe to delete.'
+    });
+    if (!lead.success) {
+      return lead;
+    }
+    var qualify = LeadService.markStep2Completed(lead.data.leadId, 93);
+    if (!qualify.success) {
+      return qualify;
+    }
+
+    var vendorId = UtilsService.createPrefixedId_('VEND-STAGE45-RESP-TEST-');
+    var vendorSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
+    vendorSheet.appendRow([vendorId, testTag + ' Vendor', 'test-stage45-response-vendor-' + runStamp + '@example.com', 'Yes', 'Yes', 'Approved', testTag + ' Safe to delete']);
+
+    var dispatch = VendorService.assignVendorToLead(lead.data.leadId, vendorId, { sendEmail: false });
+    if (!dispatch.success) {
+      return dispatch;
+    }
+
+    var tokenResult = WebsiteWebhookService.getConfiguredWebhookToken_();
+    var validToken = tokenResult.success ? tokenResult.data.value : '';
+    var validEvent = {
+      parameter: {},
+      postData: { type: 'application/json', contents: JSON.stringify({
+        formStage: 'vendorPricing', webhookToken: validToken, leadId: lead.data.leadId, vendorId: vendorId,
+        vendorCost: '1200', currency: 'GBP', eta: '6 working days', vendorNotes: testTag + ' valid response'
+      })}
+    };
+    var validSubmit = VendorPricingService.handlePostEvent(validEvent);
+
+    var duplicateSubmit = VendorPricingService.handlePostEvent(validEvent);
+
+    var invalidTokenEvent = {
+      parameter: {},
+      postData: { type: 'application/json', contents: JSON.stringify({
+        formStage: 'vendorPricing', webhookToken: 'INVALID_TOKEN', leadId: lead.data.leadId, vendorId: vendorId,
+        vendorCost: '999', currency: 'GBP', eta: '5 working days', vendorNotes: testTag + ' invalid token response'
+      })}
+    };
+    var invalidTokenSubmit = VendorPricingService.handlePostEvent(invalidTokenEvent);
+
+    var badPriceEvent = {
+      parameter: {},
+      postData: { type: 'application/json', contents: JSON.stringify({
+        formStage: 'vendorPricing', webhookToken: validToken, leadId: lead.data.leadId, vendorId: vendorId,
+        vendorCost: 'NOT_A_NUMBER', currency: 'GBP', eta: '5 working days', vendorNotes: testTag + ' bad price response'
+      })}
+    };
+    var badPriceSubmit = VendorPricingService.handlePostEvent(badPriceEvent);
+
+    return {
+      success: validSubmit.success && !duplicateSubmit.success && !invalidTokenSubmit.success && !badPriceSubmit.success,
+      message: 'Stage 4.5 vendor pricing response intake hardening test completed.',
+      data: { setup: setup, lead: lead, qualification: qualify, vendorId: vendorId, dispatch: dispatch, validSubmit: validSubmit, duplicateSubmit: duplicateSubmit, invalidTokenSubmit: invalidTokenSubmit, badPriceSubmit: badPriceSubmit }
+    };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage45VendorPricingResponseIntakeHardeningTest', error);
+    return { success: false, message: 'Stage 4.5 vendor pricing response intake hardening test failed unexpectedly.' };
+  }
+}

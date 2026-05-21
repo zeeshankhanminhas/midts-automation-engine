@@ -8,6 +8,7 @@
  * - Google Sheets tab: Vendors
  * - DatabaseService (DatabaseService.gs)
  * - LeadService (LeadService.gs)
+ * - VendorPricingService (VendorPricingService.gs)
  * - EmailService (EmailService.gs)
  * - ErrorLogger (ErrorLogger.gs)
  */
@@ -72,13 +73,54 @@ var VendorService = {
           }
           sheet.getRange(i + 1, 7).setValue(assignedSet.join(', '));
 
+          var dispatchRecord = null;
           var emailResult = null;
           if (settings.sendEmail !== false) {
+            if (!vendorEmail) {
+              var missingEmail = { success: false, message: 'Vendor email is required before pricing request dispatch.' };
+              this.logVendorPricingDispatchAttempt_('Dispatch blocked: missing email', missingEmail, targetLeadId, targetVendorId, vendorEmail);
+              return missingEmail;
+            }
+
+            var duplicateCheck = VendorPricingService.hasActivePricingRequestForLeadVendor(targetLeadId, targetVendorId);
+            if (!duplicateCheck.success) {
+              this.logVendorPricingDispatchAttempt_('Dispatch blocked: duplicate check failed', duplicateCheck, targetLeadId, targetVendorId, vendorEmail);
+              return duplicateCheck;
+            }
+            if (duplicateCheck.data.hasActiveRequest) {
+              var duplicateBlocked = {
+                success: false,
+                message: 'Active vendor pricing request already exists for this lead/vendor pair.',
+                data: duplicateCheck.data
+              };
+              this.logVendorPricingDispatchAttempt_('Dispatch blocked: duplicate active request', duplicateBlocked, targetLeadId, targetVendorId, vendorEmail);
+              return duplicateBlocked;
+            }
+
+            dispatchRecord = VendorPricingService.createVendorPricingDispatchRecord({
+              leadId: targetLeadId,
+              vendorId: targetVendorId,
+              vendorName: vendorName,
+              vendorEmail: vendorEmail,
+              currency: 'GBP',
+              eta: '',
+              notes: 'Pricing request dispatch initiated by vendor assignment.'
+            });
+            if (!dispatchRecord.success) {
+              this.logVendorPricingDispatchAttempt_('Dispatch blocked: record creation failed', dispatchRecord, targetLeadId, targetVendorId, vendorEmail);
+              return dispatchRecord;
+            }
+
             emailResult = this.sendVendorPricingRequest_(targetLeadId, {
               vendorId: targetVendorId,
               vendorName: vendorName,
               vendorEmail: vendorEmail
             });
+            if (dispatchRecord && dispatchRecord.data && dispatchRecord.data.vendorPricingId) {
+              emailResult.data = emailResult.data || {};
+              emailResult.data.vendorPricingId = dispatchRecord.data.vendorPricingId;
+            }
+            this.logVendorPricingDispatchAttempt_(emailResult.success ? 'Dispatch email sent' : 'Dispatch email failed', emailResult, targetLeadId, targetVendorId, vendorEmail);
           }
 
           return {
@@ -86,7 +128,13 @@ var VendorService = {
             message: emailResult && !emailResult.success
               ? 'Vendor assigned to lead successfully, but vendor email was not sent.'
               : 'Vendor assigned to lead successfully.',
-            data: { leadId: targetLeadId, vendorId: targetVendorId, emailNotification: emailResult }
+            data: {
+              leadId: targetLeadId,
+              vendorId: targetVendorId,
+              dispatchRecord: dispatchRecord,
+              dispatchTimestamp: dispatchRecord && dispatchRecord.data ? dispatchRecord.data.dispatchedAt : '',
+              emailNotification: emailResult
+            }
           };
         }
       }
@@ -125,5 +173,21 @@ var VendorService = {
       ErrorLogger.logError_('VendorService.sendVendorPricingRequest_', error, { leadId: leadId, vendor: vendor });
       return { success: false, message: 'Failed to send vendor pricing request email.' };
     }
+  }
+  ,
+  /**
+   * FUNCTION: logVendorPricingDispatchAttempt_
+   * PURPOSE: Record pricing dispatch outcomes in Vendor Pricing Logs for operational traceability.
+   * INPUT: stage (string), result (object), leadId (string), vendorId (string), vendorEmail (string)
+   * OUTPUT: none
+   * SIDE EFFECTS: Appends one Vendor Pricing Logs row when possible.
+   */
+  logVendorPricingDispatchAttempt_: function (stage, result, leadId, vendorId, vendorEmail) {
+    // ===== MAIN LOGIC =====
+    VendorPricingService.logVendorPricingAttempt_(stage, result, {
+      leadId: leadId,
+      vendorId: vendorId,
+      vendorEmail: vendorEmail
+    });
   }
 };
