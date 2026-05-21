@@ -131,6 +131,65 @@ var EmailService = {
   },
 
   /**
+   * FUNCTION: sendStep2ReminderEmail
+   * PURPOSE: Send one controlled Step 2 reminder email for the 2h, 24h, or 72h nurture stage.
+   * INPUT: lead (object: email, fullName, leadId), reminderStage (string: 2h|24h|72h)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Sends one Brevo email and appends one Email Logs row.
+   */
+  sendStep2ReminderEmail: function (lead, reminderStage) {
+    // ===== MAIN LOGIC =====
+    try {
+      var payload = lead || {};
+      var email = String(payload.email || '').trim();
+      var fullName = String(payload.fullName || 'there').trim();
+      var leadId = String(payload.leadId || '').trim();
+      var stage = String(reminderStage || '').trim().toLowerCase();
+      var template = this.getStep2ReminderTemplate_(stage);
+
+      if (!template.success) {
+        return template;
+      }
+      if (!email || email.indexOf('@') === -1) {
+        return { success: false, message: 'A valid lead email is required.' };
+      }
+      if (!leadId) {
+        return { success: false, message: 'leadId is required to send the Step 2 reminder.' };
+      }
+
+      var step2BaseUrlResult = this.getSettingValue_(ConfigService.STEP2_FORM_BASE_URL_KEY);
+      if (!step2BaseUrlResult.success) {
+        return step2BaseUrlResult;
+      }
+
+      var step2Url = this.buildStep2FormUrl_(step2BaseUrlResult.data.value, leadId);
+      var safeFullName = this.escapeHtml_(fullName);
+      var safeStep2Url = this.escapeHtml_(step2Url);
+      var safeLeadId = this.escapeHtml_(leadId);
+      var subject = template.data.subject;
+      var htmlContent = '<p>Hello ' + safeFullName + ',</p>' +
+        '<p>' + template.data.htmlIntro + '</p>' +
+        '<p>Please complete the Step 2 technical requirement form here: <a href="' + safeStep2Url + '">Complete Step 2</a>.</p>' +
+        '<p>Reference: ' + safeLeadId + '.</p>' +
+        '<p>If you have already completed Step 2, no further action is needed.</p>';
+      var textContent = 'Hello ' + fullName + ', ' + template.data.textIntro + ' Complete Step 2 here: ' + step2Url + '. Reference: ' + leadId + '. If you have already completed Step 2, no further action is needed.';
+
+      return this.sendTransactionalEmail({
+        toEmail: email,
+        toName: fullName,
+        subject: subject,
+        htmlContent: htmlContent,
+        textContent: textContent,
+        templateKey: template.data.templateKey
+      });
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('EmailService.sendStep2ReminderEmail', error, { lead: lead, reminderStage: reminderStage });
+      return { success: false, message: 'Failed to send Step 2 reminder email.' };
+    }
+  },
+
+  /**
    * FUNCTION: sendVendorPricingRequestEmail
    * PURPOSE: Send sanitized project details and a pricing form link to an assigned vendor.
    * INPUT: request (object: vendorEmail, vendorName, vendorId, lead)
@@ -194,6 +253,44 @@ var EmailService = {
       ErrorLogger.logError_('EmailService.sendVendorPricingRequestEmail', error, { request: request });
       return { success: false, message: 'Failed to send vendor pricing request email.' };
     }
+  },
+
+  /**
+   * FUNCTION: getStep2ReminderTemplate_
+   * PURPOSE: Internal helper that returns controlled inline copy for Step 2 reminder stages.
+   * INPUT: reminderStage (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: none
+   */
+  getStep2ReminderTemplate_: function (reminderStage) {
+    // ===== MAIN LOGIC =====
+    var stage = String(reminderStage || '').trim().toLowerCase();
+    var templates = {
+      '2h': {
+        subject: 'Reminder: complete your MIDTS Step 2 requirements',
+        htmlIntro: 'This is a quick reminder to complete Step 2 so MIDTS can qualify your request and prepare the next action.',
+        textIntro: 'This is a quick reminder to complete Step 2 so MIDTS can qualify your request and prepare the next action.',
+        templateKey: 'STEP_2_REMINDER_2H'
+      },
+      '24h': {
+        subject: 'MIDTS Step 2 reminder - technical details needed',
+        htmlIntro: 'We still need your Step 2 technical details before we can move your MIDTS request into review and pricing.',
+        textIntro: 'We still need your Step 2 technical details before we can move your MIDTS request into review and pricing.',
+        templateKey: 'STEP_2_REMINDER_24H'
+      },
+      '72h': {
+        subject: 'Final reminder: complete MIDTS Step 2',
+        htmlIntro: 'This is the final automated reminder to complete Step 2 for your MIDTS request. Completing it keeps the request active for qualification.',
+        textIntro: 'This is the final automated reminder to complete Step 2 for your MIDTS request. Completing it keeps the request active for qualification.',
+        templateKey: 'STEP_2_REMINDER_72H'
+      }
+    };
+
+    if (!templates[stage]) {
+      return { success: false, message: 'Invalid Step 2 reminder stage. Use 2h, 24h, or 72h.' };
+    }
+
+    return { success: true, message: 'Step 2 reminder template loaded.', data: templates[stage] };
   },
 
   /**
