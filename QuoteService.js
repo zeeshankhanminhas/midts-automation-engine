@@ -284,7 +284,7 @@ var QuoteService = {
         return { success: false, message: 'A valid customer recipient email is required.' };
       }
 
-      var emailResult = EmailService.sendCustomerQuoteEmail({
+      var emailResult = sendCustomerQuoteEmail_({
         quote: quote,
         lead: lead,
         toEmail: recipientEmail,
