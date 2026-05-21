@@ -11,11 +11,8 @@ function runOperationalReadinessValidation() {
   var testTag = '[TEST][OperationalReadiness][' + runStamp + ']';
 
   try {
-    var settingsCheck = operationalReadinessCheckRequiredSettings_();
-    operationalReadinessAddCheck_(checks, 'Required Settings values exist', settingsCheck, true);
-
-    var sheetsCheck = operationalReadinessCheckRequiredSheets_();
-    operationalReadinessAddCheck_(checks, 'Required sheets exist', sheetsCheck, true);
+    operationalReadinessAddCheck_(checks, 'Required Settings values exist', operationalReadinessCheckRequiredSettings_(), true);
+    operationalReadinessAddCheck_(checks, 'Required sheets exist', operationalReadinessCheckRequiredSheets_(), true);
 
     var controlledRecipient = operationalReadinessGetControlledRecipient_();
     operationalReadinessAddCheck_(checks, 'Controlled test email recipient configured', controlledRecipient, true);
@@ -25,7 +22,7 @@ function runOperationalReadinessValidation() {
     var webhookToken = tokenResult.success && tokenResult.data ? tokenResult.data.value : '';
 
     var websiteLogRowsBefore = operationalReadinessGetSheetRowCount_(WebsiteWebhookService.WEBHOOK_LOGS_SHEET_NAME);
-    var step2LogRowsBefore = operationalReadinessGetSheetRowCount_(Step2RequirementService.STEP2_REQUIREMENT_LOGS_SHEET_NAME);
+    var step2LogRowsBefore = operationalReadinessGetSheetRowCount_(Step2RequirementService.STEP2_LOGS_SHEET_NAME);
     var vendorPricingLogRowsBefore = operationalReadinessGetSheetRowCount_(VendorPricingService.VENDOR_PRICING_LOGS_SHEET_NAME);
     var emailLogRowsBefore = operationalReadinessGetSheetRowCount_(EmailService.EMAIL_LOGS_SHEET_NAME);
 
@@ -47,23 +44,13 @@ function runOperationalReadinessValidation() {
     operationalReadinessAddCheck_(checks, 'Step 1 lead creation path works', operationalReadinessSafeResult_(leadResult), true);
 
     var leadId = leadResult.success && leadResult.data ? leadResult.data.leadId : '';
-
     var acknowledgementResult = leadResult.success && controlledRecipient.success
       ? sendWebsiteLeadAcknowledgement_(operationalReadinessCreateEvent_(leadPayload), leadResult)
       : { success: false, message: 'Acknowledgement email skipped because lead creation or controlled recipient check failed.' };
     operationalReadinessAddCheck_(checks, 'Brevo acknowledgement email path works', operationalReadinessSafeResult_(acknowledgementResult), true);
 
     var websiteLogRowsAfterLead = operationalReadinessGetSheetRowCount_(WebsiteWebhookService.WEBHOOK_LOGS_SHEET_NAME);
-    operationalReadinessAddCheck_(checks, 'Website webhook audit log written', {
-      success: websiteLogRowsAfterLead > websiteLogRowsBefore,
-      message: websiteLogRowsAfterLead > websiteLogRowsBefore
-        ? 'Website webhook log row count increased.'
-        : 'Website webhook log row count did not increase.',
-      data: {
-        beforeRows: websiteLogRowsBefore,
-        afterRows: websiteLogRowsAfterLead
-      }
-    }, true);
+    operationalReadinessAddRowIncreaseCheck_(checks, 'Website webhook audit log written', websiteLogRowsBefore, websiteLogRowsAfterLead, true);
 
     var step2Payload = {
       webhookToken: webhookToken,
@@ -75,12 +62,11 @@ function runOperationalReadinessValidation() {
       fullName: leadPayload.fullName,
       company: leadPayload.company,
       projectType: 'Website CAD Enquiry',
-      requirementSummary: testTag + ' Step 2 requirement intake validation.',
-      fileFormat: 'STEP',
-      material: 'Aluminium 6061',
-      quantity: '12',
-      deadline: 'Test only',
+      timelineUrgency: 'Within one week',
+      filesReady: 'Yes, ready for review',
+      requirementComplexity: 'CAD/CAM manufacturing support',
       budget: '1000-2500',
+      technicalRequirement: testTag + ' Step 2 requirement intake validation. Files are ready, delivery is needed within one week, and CAD/CAM manufacturing review is required before vendor pricing.',
       notes: testTag + ' Requirement detail captured by readiness runner.'
     };
 
@@ -89,17 +75,8 @@ function runOperationalReadinessValidation() {
       : { success: false, message: 'Step 2 validation skipped because lead creation failed.' };
     operationalReadinessAddCheck_(checks, 'Step 2 update path works', operationalReadinessSafeResult_(step2Result), true);
 
-    var step2LogRowsAfter = operationalReadinessGetSheetRowCount_(Step2RequirementService.STEP2_REQUIREMENT_LOGS_SHEET_NAME);
-    operationalReadinessAddCheck_(checks, 'Step 2 audit log written', {
-      success: step2LogRowsAfter > step2LogRowsBefore,
-      message: step2LogRowsAfter > step2LogRowsBefore
-        ? 'Step 2 log row count increased.'
-        : 'Step 2 log row count did not increase.',
-      data: {
-        beforeRows: step2LogRowsBefore,
-        afterRows: step2LogRowsAfter
-      }
-    }, true);
+    var step2LogRowsAfter = operationalReadinessGetSheetRowCount_(Step2RequirementService.STEP2_LOGS_SHEET_NAME);
+    operationalReadinessAddRowIncreaseCheck_(checks, 'Step 2 audit log written', step2LogRowsBefore, step2LogRowsAfter, true);
 
     var qualificationResult = leadId
       ? LeadService.canLeadProceedToQuote(leadId)
@@ -140,6 +117,7 @@ function runOperationalReadinessValidation() {
       leadId: leadId,
       vendorId: vendorId,
       vendorName: 'MIDTS Readiness Vendor',
+      vendorEmail: '',
       price: '975',
       currency: 'GBP',
       leadTime: '7 working days',
@@ -152,20 +130,9 @@ function runOperationalReadinessValidation() {
     operationalReadinessAddCheck_(checks, 'Vendor pricing gate accepts submitted pricing', operationalReadinessSafeResult_(vendorPricingResult), true);
 
     var vendorPricingLogRowsAfter = operationalReadinessGetSheetRowCount_(VendorPricingService.VENDOR_PRICING_LOGS_SHEET_NAME);
-    operationalReadinessAddCheck_(checks, 'Vendor pricing audit log written', {
-      success: vendorPricingLogRowsAfter > vendorPricingLogRowsBefore,
-      message: vendorPricingLogRowsAfter > vendorPricingLogRowsBefore
-        ? 'Vendor pricing log row count increased.'
-        : 'Vendor pricing log row count did not increase.',
-      data: {
-        beforeRows: vendorPricingLogRowsBefore,
-        afterRows: vendorPricingLogRowsAfter
-      }
-    }, true);
+    operationalReadinessAddRowIncreaseCheck_(checks, 'Vendor pricing audit log written', vendorPricingLogRowsBefore, vendorPricingLogRowsAfter, true);
 
-    var vendorPricingId = vendorPricingResult.success && vendorPricingResult.data
-      ? vendorPricingResult.data.vendorPricingId
-      : '';
+    var vendorPricingId = vendorPricingResult.success && vendorPricingResult.data ? vendorPricingResult.data.vendorPricingId : '';
     var approvalResult = vendorPricingId
       ? VendorPricingService.approveVendorPricingForQuote(vendorPricingId, testTag + ' Approved for readiness validation.', {
           marginType: 'PERCENT',
@@ -183,9 +150,7 @@ function runOperationalReadinessValidation() {
       : { success: false, message: 'Quote creation skipped because vendor pricing approval failed.' };
     operationalReadinessAddCheck_(checks, 'Quote creation works after vendor pricing approval', operationalReadinessSafeResult_(quoteAfterApprovalResult), true);
 
-    var quoteId = quoteAfterApprovalResult.success && quoteAfterApprovalResult.data
-      ? quoteAfterApprovalResult.data.quoteId
-      : '';
+    var quoteId = quoteAfterApprovalResult.success && quoteAfterApprovalResult.data ? quoteAfterApprovalResult.data.quoteId : '';
     var projectBeforeAcceptanceResult = quoteId
       ? ProjectService.createProjectFromQuote({
           leadId: leadId,
@@ -223,23 +188,12 @@ function runOperationalReadinessValidation() {
     operationalReadinessAddCheck_(checks, 'Project creation works after quote acceptance', operationalReadinessSafeResult_(projectAfterAcceptanceResult), true);
 
     var emailLogRowsAfter = operationalReadinessGetSheetRowCount_(EmailService.EMAIL_LOGS_SHEET_NAME);
-    operationalReadinessAddCheck_(checks, 'Email audit log written', {
-      success: emailLogRowsAfter > emailLogRowsBefore,
-      message: emailLogRowsAfter > emailLogRowsBefore
-        ? 'Email log row count increased.'
-        : 'Email log row count did not increase.',
-      data: {
-        beforeRows: emailLogRowsBefore,
-        afterRows: emailLogRowsAfter
-      }
-    }, true);
+    operationalReadinessAddRowIncreaseCheck_(checks, 'Email audit log written', emailLogRowsBefore, emailLogRowsAfter, true);
 
     operationalReadinessAddCheck_(checks, 'No production secrets are returned by runner', {
       success: true,
       message: 'Secret values are used internally only and are redacted from returned check data.',
-      data: {
-        secretFieldsReturned: 0
-      }
+      data: { secretFieldsReturned: 0 }
     }, true);
 
     var summary = operationalReadinessBuildSummary_(checks);
@@ -273,9 +227,7 @@ function runOperationalReadinessValidation() {
 function operationalReadinessCheckRequiredSettings_() {
   var validationResult = ConfigService.validateRequiredSettings();
   var requiredKeys = ConfigService.getRequiredSettingKeys();
-  var missingKeys = validationResult.data && validationResult.data.missingKeys
-    ? validationResult.data.missingKeys
-    : [];
+  var missingKeys = validationResult.data && validationResult.data.missingKeys ? validationResult.data.missingKeys : [];
 
   return {
     success: validationResult.success === true,
@@ -291,15 +243,17 @@ function operationalReadinessCheckRequiredSettings_() {
 
 function operationalReadinessCheckRequiredSheets_() {
   var setupResults = [
-    DatabaseService.ensureLeadsSheet(),
-    DatabaseService.ensureSettingsSheet(),
-    DatabaseService.ensureVendorsSheet(),
-    DatabaseService.ensureQuotesSheet(),
-    DatabaseService.ensureProjectsSheet(),
+    DatabaseService.ensureSettingsSheetStructure(),
+    DatabaseService.ensureIdCountersSheetStructure(),
+    DatabaseService.ensureLeadsSheetStructure(),
+    DatabaseService.ensureVendorsSheetStructure(),
+    DatabaseService.ensureQuotesSheetStructure(),
+    DatabaseService.ensureProjectsSheetStructure(),
     WebsiteWebhookService.ensureWebhookLogSheet_(),
     Step2RequirementService.ensureStep2RequirementSetup(),
-    VendorPricingService.ensureVendorPricingSetup(),
-    EmailService.ensureEmailLogSheet_()
+    VendorPricingService.ensureVendorPricingSheetStructure(),
+    VendorPricingService.ensureVendorPricingLogSheet_(),
+    EmailService.ensureEmailLogsSheetStructure()
   ];
 
   var failed = [];
@@ -312,9 +266,7 @@ function operationalReadinessCheckRequiredSheets_() {
   return {
     success: failed.length === 0,
     message: failed.length === 0 ? 'Required sheets are available.' : 'One or more required sheets failed setup validation.',
-    data: {
-      failedChecks: failed
-    }
+    data: { failedChecks: failed }
   };
 }
 
@@ -323,20 +275,21 @@ function operationalReadinessGetControlledRecipient_() {
     return {
       success: false,
       message: 'EmailService.TEST_EMAIL_RECIPIENT_KEY is not available.',
-      data: {
-        requiredKey: 'TEST_EMAIL_RECIPIENT'
-      }
+      data: { requiredKey: 'TEST_EMAIL_RECIPIENT' }
     };
   }
 
-  var recipient = EmailService.getSettingValue_(EmailService.TEST_EMAIL_RECIPIENT_KEY);
+  var recipientResult = EmailService.getSettingValue_(EmailService.TEST_EMAIL_RECIPIENT_KEY);
+  if (!recipientResult.success) {
+    return recipientResult;
+  }
+
+  var recipient = String(recipientResult.data && recipientResult.data.value ? recipientResult.data.value : '').trim();
   if (!recipient) {
     return {
       success: false,
       message: 'Missing controlled test email recipient setting.',
-      data: {
-        requiredKey: EmailService.TEST_EMAIL_RECIPIENT_KEY
-      }
+      data: { requiredKey: EmailService.TEST_EMAIL_RECIPIENT_KEY }
     };
   }
 
@@ -351,13 +304,13 @@ function operationalReadinessGetControlledRecipient_() {
 }
 
 function operationalReadinessCreateReadinessVendor_(testTag) {
-  var vendorsResult = DatabaseService.ensureVendorsSheet();
+  var vendorsResult = DatabaseService.ensureVendorsSheetStructure();
   if (!vendorsResult.success) {
     return vendorsResult;
   }
 
   var vendorId = UtilsService.createPrefixedId_('VEND-OPS-READY-');
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(DatabaseService.VENDORS_SHEET_NAME);
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
   sheet.appendRow([
     vendorId,
     'MIDTS Readiness Vendor',
@@ -371,23 +324,28 @@ function operationalReadinessCreateReadinessVendor_(testTag) {
   return {
     success: true,
     message: 'Readiness vendor record created.',
-    data: {
-      vendorId: vendorId
-    }
+    data: { vendorId: vendorId }
   };
 }
 
 function operationalReadinessCreateEvent_(payload) {
-  return {
-    postData: {
-      contents: JSON.stringify(payload)
-    }
-  };
+  return { postData: { contents: JSON.stringify(payload) } };
 }
 
 function operationalReadinessGetSheetRowCount_(sheetName) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   return sheet ? sheet.getLastRow() : 0;
+}
+
+function operationalReadinessAddRowIncreaseCheck_(checks, name, beforeRows, afterRows, required) {
+  operationalReadinessAddCheck_(checks, name, {
+    success: afterRows > beforeRows,
+    message: afterRows > beforeRows ? name + ': row count increased.' : name + ': row count did not increase.',
+    data: {
+      beforeRows: beforeRows,
+      afterRows: afterRows
+    }
+  }, required);
 }
 
 function operationalReadinessAddCheck_(checks, name, result, required) {
@@ -424,11 +382,7 @@ function operationalReadinessBuildSummary_(checks) {
 
 function operationalReadinessSafeResult_(result) {
   if (!result) {
-    return {
-      success: false,
-      message: 'No result returned.',
-      data: {}
-    };
+    return { success: false, message: 'No result returned.', data: {} };
   }
 
   return {
