@@ -39,7 +39,8 @@ var ProjectService = {
         return { success: false, message: 'Lead is not eligible for project creation.', data: leadGate.data || {} };
       }
 
-      var vendorAssignResult = VendorService.assignVendorToLead(leadId, vendorId);
+      // Project creation verifies the vendor remains eligible without dispatching a duplicate pricing request.
+      var vendorAssignResult = VendorService.assignVendorToLead(leadId, vendorId, { sendEmail: false });
       if (!vendorAssignResult.success) {
         return { success: false, message: 'Vendor assignment prerequisite failed.', data: vendorAssignResult.data || {} };
       }
