@@ -66,6 +66,14 @@ var ConfigService = {
   // Example: QUOTE_ACCEPTANCE_FORM_BASE_URL = "https://zeeshankhanminhas.github.io/NEW-MIDTS/quote-acceptance/"
   QUOTE_ACCEPTANCE_FORM_BASE_URL_KEY: 'QUOTE_ACCEPTANCE_FORM_BASE_URL',
 
+  // OPTIONAL: Enable post-Step-2 vendor assignment dispatch after manual runner verification.
+  // Uses Settings sheet value AUTO_VENDOR_ASSIGNMENT_ENABLED = TRUE to enable live dispatch.
+  AUTO_VENDOR_ASSIGNMENT_ENABLED_KEY: 'AUTO_VENDOR_ASSIGNMENT_ENABLED',
+
+  // OPTIONAL: Default eligible vendor used by the post-Step-2 vendor assignment dispatcher.
+  // Uses Settings sheet value DEFAULT_VENDOR_ID_FOR_PRICING = vendor ID from Vendors sheet.
+  DEFAULT_VENDOR_ID_FOR_PRICING_KEY: 'DEFAULT_VENDOR_ID_FOR_PRICING',
+
   /**
    * FUNCTION: getRequiredSettingKeys
    * PURPOSE: Return the canonical list of required configuration keys for full production readiness.
