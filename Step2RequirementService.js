@@ -4,6 +4,7 @@
  * WHAT THIS FILE DOES:
  * - Accepts validated Step 2 technical requirement submissions.
  * - Updates the matching lead as Step 2 completed and qualified.
+ * - Triggers the controlled post-Step-2 vendor assignment dispatcher.
  * - Stores a compact technical summary in lead notes.
  * - Audits every Step 2 webhook outcome to the Step 2 Requirement Logs sheet.
  * DEPENDENCIES:
@@ -11,6 +12,7 @@
  * - Google Sheets tab: Leads
  * - Google Sheets tab: Step 2 Requirement Logs
  * - LeadService (LeadService.gs)
+ * - VendorAssignmentDispatcherService (VendorAssignmentDispatcherService.gs)
  * - WebsiteWebhookService (WebsiteWebhookService.gs)
  * - DatabaseService (DatabaseService.gs)
  * - ConfigService (Config.gs)
@@ -43,7 +45,7 @@ var Step2RequirementService = {
    * PURPOSE: Process one Step 2 technical requirement POST into a qualified lead update.
    * INPUT: e (Apps Script doPost event object)
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: Updates one Leads row; appends one Step 2 Requirement Logs row.
+   * SIDE EFFECTS: Updates one Leads row; may dispatch vendor pricing request; appends Step 2 and vendor assignment audit rows.
    */
   handlePostEvent: function (e) {
     // ===== MAIN LOGIC =====
@@ -96,6 +98,11 @@ var Step2RequirementService = {
         return logsResult;
       }
 
+      var dispatcherResult = VendorAssignmentDispatcherService.ensureVendorAssignmentSetup();
+      if (!dispatcherResult.success) {
+        return dispatcherResult;
+      }
+
       var tokenResult = WebsiteWebhookService.getConfiguredWebhookToken_();
       if (!tokenResult.success) {
         return tokenResult;
@@ -106,7 +113,8 @@ var Step2RequirementService = {
         message: 'Step 2 requirement webhook setup verified.',
         data: {
           requiredSetting: ConfigService.WEBSITE_WEBHOOK_TOKEN_KEY,
-          auditSheet: this.STEP2_LOGS_SHEET_NAME
+          auditSheet: this.STEP2_LOGS_SHEET_NAME,
+          vendorAssignmentDispatcher: dispatcherResult
         }
       };
     } catch (error) {
@@ -118,10 +126,10 @@ var Step2RequirementService = {
 
   /**
    * FUNCTION: updateLeadFromStep2Payload_
-   * PURPOSE: Internal helper to validate Step 2 payload and qualify the matching lead.
+   * PURPOSE: Internal helper to validate Step 2 payload, qualify the matching lead, and trigger vendor assignment dispatch.
    * INPUT: payload (object)
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: Updates one Leads row.
+   * SIDE EFFECTS: Updates one Leads row and invokes controlled vendor assignment dispatcher.
    */
   updateLeadFromStep2Payload_: function (payload) {
     // ===== MAIN LOGIC =====
@@ -138,6 +146,9 @@ var Step2RequirementService = {
       }
 
       var notesResult = this.appendStep2Notes_(leadId, payload, scoreResult.data);
+      var vendorAssignmentResult = VendorAssignmentDispatcherService.dispatchAfterStep2(leadId, {
+        source: 'Step2RequirementService.updateLeadFromStep2Payload_'
+      });
       return {
         success: true,
         message: 'Step 2 requirement submitted and lead qualified.',
@@ -146,7 +157,8 @@ var Step2RequirementService = {
           leadScore: scoreResult.data.leadScore,
           highValueFlag: scoreResult.data.highValueFlag,
           qualificationStatus: 'Qualified',
-          notesUpdate: notesResult
+          notesUpdate: notesResult,
+          vendorAssignment: vendorAssignmentResult
         }
       };
     } catch (error) {
