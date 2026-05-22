@@ -61,6 +61,11 @@ var ConfigService = {
   // Example: VENDOR_PRICING_FORM_BASE_URL = "https://zeeshankhanminhas.github.io/NEW-MIDTS/vendor-pricing/"
   VENDOR_PRICING_FORM_BASE_URL_KEY: 'VENDOR_PRICING_FORM_BASE_URL',
 
+  // OPTIONAL: Set this value before sending customer quote emails with an acceptance link.
+  // Uses quote acceptance frontend URL from Settings sheet: QUOTE_ACCEPTANCE_FORM_BASE_URL
+  // Example: QUOTE_ACCEPTANCE_FORM_BASE_URL = "https://zeeshankhanminhas.github.io/NEW-MIDTS/quote-acceptance/"
+  QUOTE_ACCEPTANCE_FORM_BASE_URL_KEY: 'QUOTE_ACCEPTANCE_FORM_BASE_URL',
+
   /**
    * FUNCTION: getRequiredSettingKeys
    * PURPOSE: Return the canonical list of required configuration keys for full production readiness.
