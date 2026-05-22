@@ -139,6 +139,19 @@ function runStage3QuoteDeliveryAcceptanceTest() {
       return assignment;
     }
 
+    var dispatch = VendorPricingService.createVendorPricingDispatchRecord({
+      leadId: lead.data.leadId,
+      vendorId: vendorId,
+      vendorName: testTag + ' Eligible Vendor',
+      vendorEmail: 'test-stage35-vendor-' + runStamp + '@example.com',
+      currency: 'GBP',
+      eta: '',
+      notes: testTag + ' Dispatch record for controlled quote delivery test. Safe to delete.'
+    });
+    if (!dispatch.success) {
+      return dispatch;
+    }
+
     var vendorPricing = VendorPricingService.submitVendorPricing({
       leadId: lead.data.leadId,
       vendorId: vendorId,
@@ -214,6 +227,7 @@ function runStage3QuoteDeliveryAcceptanceTest() {
         qualification: qualify,
         vendorId: vendorId,
         assignment: assignment,
+        dispatch: dispatch,
         vendorPricing: vendorPricing,
         pricingApproval: pricingApproval,
         quote: quote,
