@@ -208,7 +208,7 @@ var VendorPricingService = {
    * PURPOSE: Record one vendor pricing submission for a qualified lead.
    * INPUT: payload (object: leadId, vendorId, vendorCost, currency, eta, vendorNotes)
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: Appends one Vendor Pricing row when validation passes.
+   * SIDE EFFECTS: Updates one existing Requested Vendor Pricing row when validation passes.
    */
   submitVendorPricing: function (payload) {
     // ===== MAIN LOGIC =====
@@ -256,9 +256,9 @@ var VendorPricingService = {
         sheet.getRange(requestedRow.data.rowNumber, columns.vendorCost).setValue(vendorCost);
         sheet.getRange(requestedRow.data.rowNumber, columns.currency).setValue(currency);
         sheet.getRange(requestedRow.data.rowNumber, columns.vendorEta).setValue(eta);
-        sheet.getRange(requestedRow.data.rowNumber, 11).setValue(vendorNotes);
+        sheet.getRange(requestedRow.data.rowNumber, columns.vendorNotes).setValue(vendorNotes);
         sheet.getRange(requestedRow.data.rowNumber, columns.pricingStatus).setValue(this.STATUS_SUBMITTED);
-        sheet.getRange(requestedRow.data.rowNumber, 12).setValue(now);
+        sheet.getRange(requestedRow.data.rowNumber, columns.submittedAt).setValue(now);
         sheet.getRange(requestedRow.data.rowNumber, columns.reviewStatus).setValue('Pending Review');
         return {
           success: true,
@@ -607,19 +607,24 @@ var VendorPricingService = {
     }
     return {
       vendorPricingId: map['Vendor Pricing ID'],
+      createdAt: map['Created At'],
       leadId: map['Lead ID'],
       vendorId: map['Vendor ID'],
+      vendorName: map['Vendor Name'],
+      vendorEmail: map['Vendor Email'],
       pricingStatus: map['Pricing Status'],
       vendorCost: map['Vendor Cost'],
       currency: map['Currency'],
-      vendorEta: map['Vendor ETA'],
+      vendorEta: map['Vendor ETA'] || map['ETA'],
+      vendorNotes: map['Vendor Notes'],
+      submittedAt: map['Submitted At'],
       marginType: map['MIDTS Margin Type'],
       marginValue: map['MIDTS Margin Value'],
       profitAmount: map['MIDTS Profit Amount'],
       finalCustomerPrice: map['Final Customer Price'],
-      reviewStatus: map['Review Status'],
+      reviewStatus: map['Review Status'] || map['MIDTS Review Status'],
       quoteId: map['Quote ID'],
-      notes: map['Notes']
+      notes: map['Notes'] || map['MIDTS Notes']
     };
   },
 
@@ -676,17 +681,17 @@ var VendorPricingService = {
     for (var i = 0; i < maxCol; i++) { row.push(''); }
     var p = payload || {};
     row[columns.vendorPricingId - 1] = p.vendorPricingId || '';
-    row[2 - 1] = p.createdAt || '';
+    row[columns.createdAt - 1] = p.createdAt || '';
     row[columns.leadId - 1] = p.leadId || '';
     row[columns.vendorId - 1] = p.vendorId || '';
-    row[5 - 1] = p.vendorName || '';
-    row[6 - 1] = p.vendorEmail || '';
+    row[columns.vendorName - 1] = p.vendorName || '';
+    row[columns.vendorEmail - 1] = p.vendorEmail || '';
     row[columns.pricingStatus - 1] = p.pricingStatus || '';
     row[columns.vendorCost - 1] = p.vendorCost || '';
     row[columns.currency - 1] = p.currency || '';
     row[columns.vendorEta - 1] = p.vendorEta || '';
-    row[11 - 1] = p.vendorNotes || '';
-    row[12 - 1] = p.submittedAt || '';
+    row[columns.vendorNotes - 1] = p.vendorNotes || '';
+    row[columns.submittedAt - 1] = p.submittedAt || '';
     row[columns.reviewStatus - 1] = p.reviewStatus || '';
     row[columns.notes - 1] = p.notes || '';
     return row;
