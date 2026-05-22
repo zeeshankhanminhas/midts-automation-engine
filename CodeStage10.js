@@ -3,7 +3,7 @@
  * STAGE: 10 (Website form webhook entry point)
  * WHAT THIS FILE DOES:
  * - Exposes doPost(e) for public website lead submissions.
- * - Routes Step 1 lead intake, Step 2 technical requirement submissions, and vendor pricing submissions.
+ * - Routes Step 1 lead intake, Step 2 technical requirement submissions, vendor pricing submissions, and quote acceptance submissions.
  * - Returns JSON responses for website/webhook clients.
  * - Provides Stage 10/11 setup and payload tests.
  * DEPENDENCIES:
@@ -11,6 +11,7 @@
  * - WebsiteWebhookService (WebsiteWebhookService.gs)
  * - Step2RequirementService (Step2RequirementService.gs)
  * - VendorPricingService (VendorPricingService.gs)
+ * - QuoteAcceptanceService (QuoteAcceptanceService.gs)
  * - ConfigService (Config.gs)
  * - ErrorLogger (ErrorLogger.gs)
  */
@@ -20,7 +21,7 @@
  * PURPOSE: Receive one website form submission and route it to the matching intake workflow.
  * INPUT: e (Apps Script POST event object)
  * OUTPUT: TextOutput JSON
- * SIDE EFFECTS: May append/update lead rows, vendor pricing rows, and audit logs.
+ * SIDE EFFECTS: May append/update lead rows, vendor pricing rows, quote rows, and audit logs.
  */
 function doPost(e) {
   // ===== MAIN LOGIC =====
@@ -71,6 +72,9 @@ function routeWebsiteWebhookPost_(e) {
   }
   if (payloadResult.success && VendorPricingService.isVendorPricingPayload(payload)) {
     return { route: 'vendorPricing', isStep2: false, result: VendorPricingService.handlePostEvent(e) };
+  }
+  if (payloadResult.success && QuoteAcceptanceService.isQuoteAcceptancePayload(payload)) {
+    return { route: 'quoteAcceptance', isStep2: false, result: QuoteAcceptanceService.handlePostEvent(e) };
   }
   return { route: 'step1', isStep2: false, result: WebsiteWebhookService.handlePostEvent(e) };
 }
