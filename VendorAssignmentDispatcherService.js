@@ -116,6 +116,19 @@ var VendorAssignmentDispatcherService = {
       }
 
       var assignment = VendorService.assignVendorToLead(targetLeadId, vendorId, { sendEmail: settings.sendEmail !== false });
+      if (assignment.success && settings.sendEmail === false && (!assignment.data || !assignment.data.dispatchRecord)) {
+        var noEmailDispatch = this.createNoEmailPricingRequest_(targetLeadId, vendorId);
+        if (!noEmailDispatch.success) {
+          this.logVendorAssignmentAttempt_('Post-Step-2 pricing request creation failed', noEmailDispatch, targetLeadId, vendorId, 'blocked', true, 'NO_EMAIL_PRICING_REQUEST_FAILED');
+          return noEmailDispatch;
+        }
+        assignment.data = assignment.data || {};
+        assignment.data.dispatchRecord = noEmailDispatch;
+        assignment.data.dispatchTimestamp = noEmailDispatch.data ? noEmailDispatch.data.dispatchedAt : '';
+        assignment.data.emailNotification = null;
+        assignment.message = 'Vendor assigned to lead successfully and vendor pricing request created without email.';
+      }
+
       this.logVendorAssignmentAttempt_(
         assignment.success ? 'Post-Step-2 vendor assigned' : 'Post-Step-2 vendor assignment failed',
         assignment,
@@ -132,6 +145,99 @@ var VendorAssignmentDispatcherService = {
       var failure = { success: false, message: 'Post-Step-2 vendor assignment dispatch failed unexpectedly.' };
       this.logVendorAssignmentAttempt_('Post-Step-2 dispatch failed unexpectedly', failure, targetLeadId, '', 'failed', true, 'UNEXPECTED_ERROR');
       return failure;
+    }
+  },
+
+  /**
+   * FUNCTION: createNoEmailPricingRequest_
+   * PURPOSE: Create a Vendor Pricing Requested row for controlled tests or dry-runs without sending vendor email.
+   * INPUT: leadId (string), vendorId (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Appends one Vendor Pricing row.
+   */
+  createNoEmailPricingRequest_: function (leadId, vendorId) {
+    // ===== MAIN LOGIC =====
+    try {
+      var vendorResult = this.getVendorSnapshot_(vendorId);
+      if (!vendorResult.success) {
+        return vendorResult;
+      }
+      var vendor = vendorResult.data.vendor;
+      var dispatchRecord = VendorPricingService.createVendorPricingDispatchRecord({
+        leadId: leadId,
+        vendorId: vendor.vendorId,
+        vendorName: vendor.vendorName,
+        vendorEmail: vendor.vendorEmail,
+        currency: 'GBP',
+        eta: '',
+        notes: 'Pricing request created by vendor assignment dispatcher without email.'
+      });
+      if (dispatchRecord.success) {
+        VendorPricingService.logVendorPricingAttempt_('Dispatch record created without email', dispatchRecord, {
+          leadId: leadId,
+          vendorId: vendor.vendorId,
+          vendorEmail: vendor.vendorEmail
+        });
+      }
+      return dispatchRecord;
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('VendorAssignmentDispatcherService.createNoEmailPricingRequest_', error, { leadId: leadId, vendorId: vendorId });
+      return { success: false, message: 'Failed to create no-email vendor pricing request.' };
+    }
+  },
+
+  /**
+   * FUNCTION: getVendorSnapshot_
+   * PURPOSE: Load one vendor row needed for no-email pricing request creation.
+   * INPUT: vendorId (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: none
+   */
+  getVendorSnapshot_: function (vendorId) {
+    // ===== MAIN LOGIC =====
+    try {
+      var targetVendorId = String(vendorId || '').trim();
+      if (!targetVendorId) {
+        return { success: false, message: 'vendorId is required.' };
+      }
+
+      var ensureResult = DatabaseService.ensureVendorsSheetStructure();
+      if (!ensureResult.success) {
+        return ensureResult;
+      }
+
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.VENDORS_SHEET_NAME);
+      if (!sheet) {
+        return { success: false, message: 'Vendors sheet not found.' };
+      }
+
+      var values = sheet.getDataRange().getValues();
+      for (var i = 1; i < values.length; i++) {
+        if (String(values[i][0] || '').trim() === targetVendorId) {
+          return {
+            success: true,
+            message: 'Vendor snapshot loaded.',
+            data: {
+              vendor: {
+                vendorId: targetVendorId,
+                vendorName: String(values[i][1] || '').trim(),
+                vendorEmail: String(values[i][2] || '').trim(),
+                ndaSigned: String(values[i][3] || '').trim(),
+                idVerified: String(values[i][4] || '').trim(),
+                approvedStatus: String(values[i][5] || '').trim(),
+                rowNumber: i + 1
+              }
+            }
+          };
+        }
+      }
+
+      return { success: false, message: 'Vendor not found for provided vendorId.' };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('VendorAssignmentDispatcherService.getVendorSnapshot_', error, { vendorId: vendorId });
+      return { success: false, message: 'Failed to load vendor snapshot.' };
     }
   },
 
@@ -482,5 +588,85 @@ function runStage4VendorAssignmentDispatcherSingleLeadTest() {
     // ===== ERROR HANDLING =====
     ErrorLogger.logError_('runStage4VendorAssignmentDispatcherSingleLeadTest', error);
     return { success: false, message: 'Vendor assignment dispatcher single lead test failed unexpectedly.' };
+  }
+}
+
+/**
+ * FUNCTION: runStage4VendorAssignmentDispatcherDefaultVendorTest
+ * PURPOSE: Prove the dispatcher reads DEFAULT_VENDOR_ID_FOR_PRICING from Settings without sending external email.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: Creates one test lead and one Vendor Pricing row for the configured default vendor.
+ */
+function runStage4VendorAssignmentDispatcherDefaultVendorTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    var testTag = '[TEST][Stage4.1][DefaultVendorDispatcher]';
+    var runStamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+
+    var setup = VendorAssignmentDispatcherService.ensureVendorAssignmentSetup();
+    if (!setup.success) {
+      return setup;
+    }
+
+    var defaultVendor = VendorAssignmentDispatcherService.getDefaultVendorId_();
+    if (!defaultVendor.success) {
+      return defaultVendor;
+    }
+    if (!defaultVendor.data.vendorId) {
+      return { success: false, message: 'DEFAULT_VENDOR_ID_FOR_PRICING is not configured.', data: defaultVendor.data };
+    }
+
+    var vendor = VendorAssignmentDispatcherService.getVendorSnapshot_(defaultVendor.data.vendorId);
+    if (!vendor.success) {
+      return vendor;
+    }
+
+    var lead = LeadService.createLead({
+      fullName: testTag + ' Lead ' + runStamp,
+      email: 'stage41-default-vendor-' + runStamp + '@example.com',
+      company: testTag + ' Customer',
+      projectType: 'CAD/CAM',
+      source: 'TEST_Stage41DefaultVendorDispatcher_' + runStamp,
+      notes: testTag + ' Created to prove Settings default vendor dispatcher. Safe to delete.'
+    });
+    if (!lead.success) {
+      return lead;
+    }
+
+    var qualify = LeadService.markStep2Completed(lead.data.leadId, 95);
+    if (!qualify.success) {
+      return qualify;
+    }
+
+    var dispatch = VendorAssignmentDispatcherService.dispatchAfterStep2(lead.data.leadId, {
+      source: 'runStage4VendorAssignmentDispatcherDefaultVendorTest',
+      forceDispatch: true,
+      sendEmail: false
+    });
+
+    var duplicateCheck = VendorAssignmentDispatcherService.hasActivePricingRequestForLead_(lead.data.leadId);
+    var pass = dispatch.success === true &&
+      duplicateCheck.success === true &&
+      duplicateCheck.data.hasActiveRequest === true &&
+      duplicateCheck.data.vendorId === defaultVendor.data.vendorId;
+
+    return {
+      success: pass,
+      message: pass ? 'Default vendor dispatcher test passed.' : 'Default vendor dispatcher test failed.',
+      data: {
+        setup: setup,
+        defaultVendor: defaultVendor,
+        vendor: vendor,
+        lead: lead,
+        qualification: qualify,
+        dispatch: dispatch,
+        duplicateCheck: duplicateCheck
+      }
+    };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage4VendorAssignmentDispatcherDefaultVendorTest', error);
+    return { success: false, message: 'Default vendor dispatcher test failed unexpectedly.' };
   }
 }
