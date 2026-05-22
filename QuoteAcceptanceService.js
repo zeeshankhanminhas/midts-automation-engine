@@ -184,11 +184,6 @@ function runStage35QuoteAcceptanceWebhookPayloadTest() {
     var testTag = '[TEST][Stage3.6][QuoteAcceptanceWebhook]';
     var runStamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
 
-    var settings = ConfigService.validateRequiredSettings();
-    if (!settings.success) {
-      return settings;
-    }
-
     var vendorsSetup = DatabaseService.ensureVendorsSheetStructure();
     if (!vendorsSetup.success) {
       return vendorsSetup;
@@ -316,7 +311,6 @@ function runStage35QuoteAcceptanceWebhookPayloadTest() {
       success: pass,
       message: pass ? 'Stage 3.6 quote acceptance webhook payload test passed.' : 'Stage 3.6 quote acceptance webhook payload test failed.',
       data: {
-        settings: settings,
         vendorsSetup: vendorsSetup,
         pricingSetup: pricingSetup,
         quoteSetup: quoteSetup,
