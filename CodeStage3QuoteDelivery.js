@@ -16,6 +16,77 @@
  */
 
 /**
+ * FUNCTION: getQuoteAcceptanceFormBaseUrl_
+ * PURPOSE: Load the optional frontend quote acceptance base URL from Settings or Script Properties.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: May ensure Settings sheet exists before reading.
+ */
+function getQuoteAcceptanceFormBaseUrl_() {
+  // ===== MAIN LOGIC =====
+  try {
+    var key = ConfigService.QUOTE_ACCEPTANCE_FORM_BASE_URL_KEY;
+    var settingsResult = DatabaseService.getSettingsMap();
+    if (!settingsResult.success) {
+      return settingsResult;
+    }
+
+    var fromSheet = String(settingsResult.data.settingsMap[key] || '').trim();
+    var fromScript = String(PropertiesService.getScriptProperties().getProperty(key) || '').trim();
+    var value = fromSheet || fromScript;
+
+    return {
+      success: true,
+      message: value ? 'Quote acceptance form URL configured.' : 'Quote acceptance form URL is not configured; email will use reply instructions.',
+      data: { key: key, value: value, configured: Boolean(value) }
+    };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('getQuoteAcceptanceFormBaseUrl_', error);
+    return { success: false, message: 'Failed to load quote acceptance form URL.' };
+  }
+}
+
+/**
+ * FUNCTION: buildQuoteAcceptanceUrl_
+ * PURPOSE: Build a customer-facing quote acceptance URL when the optional frontend URL is configured.
+ * INPUT: quoteId (string), leadId (string)
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: none
+ */
+function buildQuoteAcceptanceUrl_(quoteId, leadId) {
+  // ===== MAIN LOGIC =====
+  try {
+    var qid = String(quoteId || '').trim();
+    var lid = String(leadId || '').trim();
+    if (!qid) {
+      return { success: false, message: 'quoteId is required.' };
+    }
+
+    var baseResult = getQuoteAcceptanceFormBaseUrl_();
+    if (!baseResult.success) {
+      return baseResult;
+    }
+    if (!baseResult.data.configured) {
+      return { success: true, message: baseResult.message, data: { configured: false, url: '', key: baseResult.data.key } };
+    }
+
+    var baseUrl = String(baseResult.data.value || '').trim();
+    var separator = baseUrl.indexOf('?') === -1 ? '?' : '&';
+    var url = baseUrl + separator + 'quoteId=' + encodeURIComponent(qid);
+    if (lid) {
+      url += '&leadId=' + encodeURIComponent(lid);
+    }
+
+    return { success: true, message: 'Quote acceptance URL built.', data: { configured: true, url: url, key: baseResult.data.key } };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('buildQuoteAcceptanceUrl_', error, { quoteId: quoteId, leadId: leadId });
+    return { success: false, message: 'Failed to build quote acceptance URL.' };
+  }
+}
+
+/**
  * FUNCTION: sendCustomerQuoteEmail_
  * PURPOSE: Send an existing quote to a customer with quote amount, project reference, and acceptance instructions.
  * INPUT: request (object: quote, lead, toEmail, toName)
@@ -50,6 +121,12 @@ function sendCustomerQuoteEmail_(request) {
       return { success: false, message: 'Quote amount must be greater than zero.' };
     }
 
+    var acceptanceUrlResult = buildQuoteAcceptanceUrl_(quoteId, leadId);
+    if (!acceptanceUrlResult.success) {
+      return acceptanceUrlResult;
+    }
+    var acceptanceUrl = acceptanceUrlResult.data && acceptanceUrlResult.data.configured ? acceptanceUrlResult.data.url : '';
+
     var formattedAmount = currency + ' ' + amount.toFixed(2);
     var safeName = EmailService.escapeHtml_(toName);
     var safeQuoteId = EmailService.escapeHtml_(quoteId);
@@ -58,6 +135,14 @@ function sendCustomerQuoteEmail_(request) {
     var safeCompany = EmailService.escapeHtml_(company || 'Not specified');
     var safeAmount = EmailService.escapeHtml_(formattedAmount);
     var safeValidUntil = EmailService.escapeHtml_(validUntil || 'To be confirmed');
+    var safeAcceptanceUrl = EmailService.escapeHtml_(acceptanceUrl);
+    var htmlAcceptanceInstruction = acceptanceUrl
+      ? '<p><a href="' + safeAcceptanceUrl + '">Accept this quote</a></p>' +
+        '<p>If the button does not open, copy and paste this link into your browser:<br>' + safeAcceptanceUrl + '</p>'
+      : '<p>To accept this quote, reply to this email confirming the quote reference. MIDTS will record acceptance before project creation.</p>';
+    var textAcceptanceInstruction = acceptanceUrl
+      ? 'To accept this quote, open this link: ' + acceptanceUrl + '. '
+      : 'To accept this quote, reply to this email confirming the quote reference. MIDTS will record acceptance before project creation.';
 
     var htmlContent = '<p>Hello ' + safeName + ',</p>' +
       '<p>Your MIDTS quote is ready for review.</p>' +
@@ -67,15 +152,15 @@ function sendCustomerQuoteEmail_(request) {
       '<p><strong>Project type:</strong> ' + safeProjectType + '</p>' +
       '<p><strong>Quote amount:</strong> ' + safeAmount + '</p>' +
       '<p><strong>Valid until:</strong> ' + safeValidUntil + '</p>' +
-      '<p>To accept this quote, reply to this email confirming the quote reference. MIDTS will record acceptance before project creation.</p>' +
+      htmlAcceptanceInstruction +
       '<p>No payment or project work starts until acceptance is recorded and the project is created in the MIDTS workflow.</p>';
 
     var textContent = 'Hello ' + toName + ', your MIDTS quote is ready for review. ' +
       'Quote reference: ' + quoteId + '. Lead reference: ' + leadId + '. Company: ' + (company || 'Not specified') + '. ' +
       'Project type: ' + projectType + '. Quote amount: ' + formattedAmount + '. Valid until: ' + (validUntil || 'To be confirmed') + '. ' +
-      'To accept this quote, reply to this email confirming the quote reference. MIDTS will record acceptance before project creation.';
+      textAcceptanceInstruction;
 
-    return EmailService.sendTransactionalEmail({
+    var emailResult = EmailService.sendTransactionalEmail({
       toEmail: toEmail,
       toName: toName,
       subject: 'MIDTS quote ready - ' + quoteId,
@@ -83,10 +168,50 @@ function sendCustomerQuoteEmail_(request) {
       textContent: textContent,
       templateKey: 'CUSTOMER_QUOTE_READY'
     });
+    if (emailResult && emailResult.data) {
+      emailResult.data.quoteAcceptanceLinkConfigured = Boolean(acceptanceUrl);
+    }
+    return emailResult;
   } catch (error) {
     // ===== ERROR HANDLING =====
     ErrorLogger.logError_('sendCustomerQuoteEmail_', error, { request: request });
     return { success: false, message: 'Failed to send customer quote email.' };
+  }
+}
+
+/**
+ * FUNCTION: runStage35QuoteAcceptanceLinkBuilderTest
+ * PURPOSE: Verify quote emails can build an optional frontend acceptance link without sending email.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: May ensure Settings sheet exists before reading optional URL.
+ */
+function runStage35QuoteAcceptanceLinkBuilderTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    var quoteId = 'QUOTE-LINK-TEST-001';
+    var leadId = 'MIDTS-LINK-TEST-001';
+    var result = buildQuoteAcceptanceUrl_(quoteId, leadId);
+    if (!result.success) {
+      return result;
+    }
+
+    var hasExpectedParameters = !result.data.configured || (
+      result.data.url.indexOf('quoteId=' + encodeURIComponent(quoteId)) !== -1 &&
+      result.data.url.indexOf('leadId=' + encodeURIComponent(leadId)) !== -1
+    );
+
+    return {
+      success: hasExpectedParameters,
+      message: hasExpectedParameters
+        ? 'Quote acceptance link builder test passed.'
+        : 'Quote acceptance link builder test failed.',
+      data: result.data
+    };
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage35QuoteAcceptanceLinkBuilderTest', error);
+    return { success: false, message: 'Quote acceptance link builder test failed unexpectedly.' };
   }
 }
 
