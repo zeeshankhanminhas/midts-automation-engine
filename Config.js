@@ -56,6 +56,11 @@ var ConfigService = {
   // Example: STEP2_FORM_BASE_URL = "https://zeeshankhanminhas.github.io/NEW-MIDTS/step-2/"
   STEP2_FORM_BASE_URL_KEY: 'STEP2_FORM_BASE_URL',
 
+  // REQUIRED: Set this value before accepting Step 2 technical file uploads.
+  // Uses Google Drive root folder from Settings sheet: FILE_INTAKE_ROOT_FOLDER_ID
+  // Example: FILE_INTAKE_ROOT_FOLDER_ID = "1AbCdEfGhIjKlMnOp"
+  FILE_INTAKE_ROOT_FOLDER_ID_KEY: 'FILE_INTAKE_ROOT_FOLDER_ID',
+
   // REQUIRED: Set this value before sending vendor pricing request emails.
   // Uses vendor pricing frontend URL from Settings sheet: VENDOR_PRICING_FORM_BASE_URL
   // Example: VENDOR_PRICING_FORM_BASE_URL = "https://zeeshankhanminhas.github.io/NEW-MIDTS/vendor-pricing/"

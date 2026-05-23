@@ -111,12 +111,31 @@ var DatabaseService = {
     // ===== MAIN LOGIC =====
     try {
       // Fixed Leads headers support consistent append-only lead capture.
-      var requiredHeaders = ['Lead ID', 'Created At', 'Full Name', 'Email', 'Company', 'Project Type', 'Status', 'Source', 'Notes', 'Step 1 Completed At', 'Step 2 Completed At', 'Qualification Status', 'Lead Score', 'High Value Flag', 'Reminder 2h Sent At', 'Reminder 24h Sent At', 'Reminder 72h Sent At', 'Last Reminder Stage', 'Nurture State', 'Reminder Status'];
+      var requiredHeaders = ['Lead ID', 'Created At', 'Full Name', 'Email', 'Company', 'Project Type', 'Status', 'Source', 'Notes', 'Step 1 Completed At', 'Step 2 Completed At', 'Qualification Status', 'Lead Score', 'High Value Flag', 'Reminder 2h Sent At', 'Reminder 24h Sent At', 'Reminder 72h Sent At', 'Last Reminder Stage', 'Nurture State', 'Reminder Status', 'Has Files', 'File Intake Status', 'File Count', 'Lead Intake Folder ID', 'Lead Intake Folder URL', 'Last File Upload At', 'Vendor Safe Package Ready'];
       return this.ensureSheetAndHeaders_(ConfigService.LEADS_SHEET_NAME, requiredHeaders);
     } catch (error) {
       // ===== ERROR HANDLING =====
       ErrorLogger.logError_('DatabaseService.ensureLeadsSheetStructure', error);
       return { success: false, message: 'Failed to verify Leads sheet structure.' };
+    }
+  },
+
+  /**
+   * FUNCTION: ensureFileLogsSheetStructure
+   * PURPOSE: Ensure File Logs sheet exists with fixed headers for technical upload auditing.
+   * INPUT: none
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Creates sheet if missing; appends missing headers only.
+   */
+  ensureFileLogsSheetStructure: function () {
+    // ===== MAIN LOGIC =====
+    try {
+      var requiredHeaders = ['File ID', 'Timestamp', 'Lead ID', 'Original Filename', 'Stored Filename', 'Mime Type', 'File Size Bytes', 'Drive File ID', 'Drive Folder ID', 'Upload Source', 'Upload Status', 'Notes'];
+      return this.ensureSheetAndHeaders_('File Logs', requiredHeaders);
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('DatabaseService.ensureFileLogsSheetStructure', error);
+      return { success: false, message: 'Failed to verify File Logs sheet structure.' };
     }
   },
 
