@@ -76,3 +76,10 @@ Runtime code remains in its current location until the dependency lock map and r
 5. Use `04_STAGE_RULES.md` to confirm whether the requested work is allowed in the current stage.
 
 When in doubt, document first and change runtime behavior later.
+
+## Stage 12 Controlled Runtime Layer
+
+- Stage 12 introduces a controlled technical file intake runtime layer for NEW-MIDTS Step 2 uploads.
+- Ownership: File Intake lifecycle and controls are owned by `FileIntakeService` and documented in `13_FILE_INTAKE_AND_UPLOAD_ARCHITECTURE.md`.
+- Canonical ownership rule: Step 2 file upload routing and storage governance must remain in the File Intake layer, not in generic project folder services.
+- Reference: `docs/00-core-framework/13_FILE_INTAKE_AND_UPLOAD_ARCHITECTURE.md`.

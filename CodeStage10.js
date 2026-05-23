@@ -3,13 +3,14 @@
  * STAGE: 10 (Website form webhook entry point)
  * WHAT THIS FILE DOES:
  * - Exposes doPost(e) for public website lead submissions.
- * - Routes Step 1 lead intake, Step 2 technical requirement submissions, vendor pricing submissions, and quote acceptance submissions.
+ * - Routes Step 1 lead intake, Step 2 technical requirement submissions, Step 2 file uploads, vendor pricing submissions, and quote acceptance submissions.
  * - Returns JSON responses for website/webhook clients.
  * - Provides Stage 10/11 setup and payload tests.
  * DEPENDENCIES:
  * - Apps Script Web App deployment
  * - WebsiteWebhookService (WebsiteWebhookService.gs)
  * - Step2RequirementService (Step2RequirementService.gs)
+ * - FileIntakeService (FileIntakeService.gs)
  * - VendorPricingService (VendorPricingService.gs)
  * - QuoteAcceptanceService (QuoteAcceptanceService.gs)
  * - ConfigService (Config.gs)
@@ -69,6 +70,9 @@ function routeWebsiteWebhookPost_(e) {
   var payload = payloadResult.success ? payloadResult.data.payload || {} : {};
   if (payloadResult.success && Step2RequirementService.isStep2Payload(payload)) {
     return { route: 'step2', isStep2: true, result: Step2RequirementService.handlePostEvent(e) };
+  }
+  if (payloadResult.success && FileIntakeService.isFileUploadPayload && FileIntakeService.isFileUploadPayload(payload)) {
+    return { route: 'step2FileUpload', isStep2: false, result: FileIntakeService.handlePostEvent(e) };
   }
   if (payloadResult.success && VendorPricingService.isVendorPricingPayload(payload)) {
     return { route: 'vendorPricing', isStep2: false, result: VendorPricingService.handlePostEvent(e) };
@@ -326,5 +330,73 @@ function runStage10WebsiteWebhookPayloadTest() {
     // ===== ERROR HANDLING =====
     ErrorLogger.logError_('runStage10WebsiteWebhookPayloadTest', error);
     return { success: false, message: 'Stage 10 website webhook payload test failed unexpectedly.' };
+  }
+}
+
+
+/**
+ * FUNCTION: runStage12FileIntakeSetupValidation
+ * PURPOSE: Validate Stage 12 setup for file intake settings and required sheets.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: May append missing Leads/File Logs headers and Settings keys.
+ */
+function runStage12FileIntakeSetupValidation() {
+  try {
+    return FileIntakeService.ensureFileIntakeSetup();
+  } catch (error) {
+    ErrorLogger.logError_('runStage12FileIntakeSetupValidation', error);
+    return { success: false, message: 'Stage 12 file intake setup validation failed unexpectedly.' };
+  }
+}
+
+/**
+ * FUNCTION: runStage12FileUploadPayloadTest
+ * PURPOSE: Validate file upload payload path with a tiny synthetic text file.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: Creates one lead, one test file in Drive, and one or more File Logs rows.
+ */
+function runStage12FileUploadPayloadTest() {
+  try {
+    var createResult = LeadService.createLead({
+      fullName: 'Stage 12 File Intake Test Lead',
+      email: 'stage12-file-intake@example.com',
+      company: 'MIDTS File Intake Test',
+      projectType: 'File Upload Validation',
+      source: 'Stage12FileUploadTest',
+      notes: 'Created by runStage12FileUploadPayloadTest.'
+    });
+    if (!createResult.success) { return createResult; }
+
+    var tokenResult = WebsiteWebhookService.getConfiguredWebhookToken_();
+    var payload = {
+      formStage: 'step2_file_upload',
+      webhookToken: tokenResult.success ? tokenResult.data.value : '',
+      leadId: createResult.data.leadId,
+      files: JSON.stringify([{
+        uploadId: 'stage12-upload-1',
+        name: 'stage12-test.txt',
+        type: 'text/plain',
+        size: 16,
+        base64: Utilities.base64Encode('stage12 payload')
+      }])
+    };
+
+    var fakeEvent = { parameter: {}, postData: { type: 'application/json', contents: JSON.stringify(payload) } };
+    var uploadResult = FileIntakeService.handlePostEvent(fakeEvent);
+
+    var invalidPayload = JSON.parse(JSON.stringify(payload));
+    invalidPayload.files = JSON.stringify([{ uploadId: 'bad', name: 'bad.exe', type: 'application/octet-stream', size: 20, base64: Utilities.base64Encode('bad') }]);
+    var invalidResult = FileIntakeService.handlePostEvent({ parameter: {}, postData: { type: 'application/json', contents: JSON.stringify(invalidPayload) } });
+
+    return {
+      success: uploadResult.success && !invalidResult.success,
+      message: uploadResult.success && !invalidResult.success ? 'Stage 12 file upload payload test passed.' : 'Stage 12 file upload payload test failed.',
+      data: { leadCreation: createResult, tokenSetup: tokenResult, uploadResult: uploadResult, validationResult: invalidResult }
+    };
+  } catch (error) {
+    ErrorLogger.logError_('runStage12FileUploadPayloadTest', error);
+    return { success: false, message: 'Stage 12 file upload payload test failed unexpectedly.' };
   }
 }
