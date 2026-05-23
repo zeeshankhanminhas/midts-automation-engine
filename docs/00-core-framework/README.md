@@ -6,18 +6,19 @@ This folder is an index and control point. It does not contain runtime Apps Scri
 
 ## Current Stage
 
-Stage 3: governance documentation only.
+Stage 4: operational topology, event-chain, and operational control documentation.
 
 Permitted work in this stage:
 
 - Expand framework documentation.
 - Clarify operating rules.
-- Define review, testing, and merge expectations.
-- Preserve all dependency locks and risk classifications from Stage 2.
+- Define review, testing, merge, trigger, state, and recovery expectations.
+- Add topology, event-chain, trigger-registry, state-machine, and failure-handling governance.
+- Preserve dependency locks and risk classifications from earlier stages.
 
 Not permitted in this stage:
 
-- Apps Script code edits.
+- Apps Script runtime code edits without explicit runtime PR.
 - File moves or renames.
 - Webhook behavior changes.
 - Sheet structure changes.
@@ -48,6 +49,32 @@ Not permitted in this stage:
 | `docs/00-core-framework/02_RISK_REGISTER.md` | Stage 2 risk classification for critical, high-risk, medium-risk, low-risk, and future/dormant components |
 | `docs/00-core-framework/03_OPERATING_MANUAL.md` | Stage 3 manual for planning, reviewing, testing, and merging future changes |
 | `docs/00-core-framework/04_STAGE_RULES.md` | Stage-by-stage rules for controlled framework evolution |
+| `docs/00-core-framework/05_SYSTEM_TOPOLOGY.md` | Canonical topology and component relationship map |
+| `docs/00-core-framework/06_DATA_FLOW_MAP.md` | Canonical lifecycle and data movement map |
+| `docs/00-core-framework/07_EVENT_CHAIN_MAP.md` | High-level orchestration and event progression map |
+| `docs/00-core-framework/08_WIRING_STATE_AND_REDUNDANCY_AUDIT.md` | CTO audit of framework gaps, redundancy pressure, and operational control requirements |
+| `docs/00-core-framework/09_TRIGGER_REGISTRY.md` | Canonical trigger-to-handler registry and execution wiring control surface |
+| `docs/00-core-framework/10_STATE_MACHINE.md` | Canonical lifecycle state governance and legal transition definitions |
+| `docs/00-core-framework/11_FAILURE_HANDLING_MATRIX.md` | Canonical recovery, retry, escalation, and failure-diagnosis governance |
+
+## Canonical Ownership Rules
+
+To reduce documentation drift:
+
+| Topic | Canonical owner |
+|---|---|
+| Repository inventory and framework mapping | `docs/00_RESTRUCTURE_MAP.md` |
+| Public contracts and locked dependencies | `01_DEPENDENCY_LOCK_MAP.md` |
+| Risk severity | `02_RISK_REGISTER.md` |
+| Governance process and merge rules | `03_OPERATING_MANUAL.md` |
+| Stage permissions | `04_STAGE_RULES.md` |
+| System/component topology | `05_SYSTEM_TOPOLOGY.md` |
+| Data movement and lifecycle flow | `06_DATA_FLOW_MAP.md` |
+| High-level orchestration chain | `07_EVENT_CHAIN_MAP.md` |
+| Framework gap and redundancy audit | `08_WIRING_STATE_AND_REDUNDANCY_AUDIT.md` |
+| Trigger/event ownership | `09_TRIGGER_REGISTRY.md` |
+| State transitions | `10_STATE_MACHINE.md` |
+| Failure recovery governance | `11_FAILURE_HANDLING_MATRIX.md` |
 
 ## Change Control Summary
 
@@ -60,6 +87,7 @@ Every future change must follow these controls unless a later approved governanc
 - No sheet structure changes without setup validation.
 - No email/template changes without dry-run verification.
 - No deployment or clasp changes without explicit deployment review.
+- No undocumented trigger, state, or recovery behavior.
 
 ## Relationship To Runtime Code
 
@@ -74,5 +102,8 @@ Runtime code remains in its current location until the dependency lock map and r
 3. Check `02_RISK_REGISTER.md` before touching any service, sheet, webhook, or settings key.
 4. Use `03_OPERATING_MANUAL.md` to plan the work and review evidence.
 5. Use `04_STAGE_RULES.md` to confirm whether the requested work is allowed in the current stage.
+6. Use `09_TRIGGER_REGISTRY.md` before changing event routing or automation wiring.
+7. Use `10_STATE_MACHINE.md` before changing lifecycle statuses or gates.
+8. Use `11_FAILURE_HANDLING_MATRIX.md` before changing retry/recovery behavior.
 
 When in doubt, document first and change runtime behavior later.
