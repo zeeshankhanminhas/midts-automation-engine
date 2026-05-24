@@ -1,0 +1,306 @@
+# MIDTS BACKEND LAUNCH SPRINT
+
+STATUS:
+Backend architecture already exists.
+
+Objective:
+Stabilize, govern, test, and operationalize the MIDTS automation engine.
+
+RULES:
+
+* Do NOT rebuild architecture.
+* Do NOT introduce external databases.
+* Do NOT migrate away from Google ecosystem.
+* Do NOT add unnecessary abstractions.
+* Preserve FIFO operational governance.
+* Focus ONLY on launch-critical reliability.
+
+REPO:
+midts-automation-engine
+
+CRITICAL REPOSITORY LOCK RULE:
+
+* All other markdowns, specs, experiments, drafts, architecture notes, and planning documents inside the repository are considered FROZEN.
+* Agents MUST NOT read, modify, reinterpret, or execute against any other markdown or planning file unless explicitly instructed by the project owner.
+* This markdown is the SINGLE ACTIVE execution source for the backend.
+* Avoid architectural drift.
+* Avoid conflicting implementation paths.
+* Focus ONLY on completing the defined launch sprints.
+
+TECH STACK:
+
+* Google Apps Script
+* Google Sheets
+* Google Drive
+* Slack
+* Brevo
+* Stripe
+
+---
+
+## PHASE B1 — WEBHOOK STABILIZATION
+
+GOAL:
+Reliable public webhook processing.
+
+TASKS:
+
+1. Standardize all JSON responses.
+
+2. Improve:
+
+* validation messages
+* error payloads
+* failure logging
+
+3. Add retry-safe handling.
+
+4. Validate:
+
+* Step 1
+* Step 2
+* Vendor pricing
+* Quote acceptance
+* File upload
+
+5. Ensure webhook token enforcement everywhere.
+
+DELIVERABLE:
+Stable public webhook infrastructure.
+
+---
+
+## PHASE B2 — FILE INTAKE GOVERNANCE
+
+GOAL:
+Reliable engineering file handling.
+
+TASKS:
+
+1. Validate:
+
+* Drive folder creation
+* file storage
+* upload integrity
+* file size enforcement
+
+2. Add:
+
+* upload audit logs
+* sanitization states
+* review states
+
+3. Enforce lifecycle:
+   RAW
+   ↓
+   INTERNAL_REVIEW
+   ↓
+   VENDOR_SAFE
+   ↓
+   RELEASED
+
+4. Verify:
+
+* duplicate prevention
+* corrupted payload handling
+* invalid extension rejection
+
+DELIVERABLE:
+Production-grade engineering file intake.
+
+---
+
+## PHASE B3 — FIFO GOVERNANCE
+
+GOAL:
+Controlled queue-based operations.
+
+TASKS:
+
+1. Enforce FIFO sequencing.
+
+2. Add queue states:
+
+LEADS:
+
+* NEW
+* QUEUED
+* UNDER_REVIEW
+* QUALIFIED
+* REJECTED
+
+VENDOR PRICING:
+
+* REQUESTED
+* PENDING
+* SUBMITTED
+* APPROVED
+* REJECTED
+
+QUOTES:
+
+* DRAFT
+* SENT
+* ACCEPTED
+* REJECTED
+
+PROJECTS:
+
+* OPEN
+* ACTIVE
+* QA
+* DELIVERED
+* ARCHIVED
+
+3. Add timestamps everywhere.
+
+4. Add queue ordering logic.
+
+DELIVERABLE:
+Governed operational sequencing.
+
+---
+
+## PHASE B4 — APPROVAL SYSTEM
+
+GOAL:
+Controlled operational approvals.
+
+TASKS:
+
+1. Add approval fields:
+
+* review status
+* approved by
+* approved at
+* rejection reason
+
+2. Add approval checkpoints:
+
+* lead qualification
+* file release
+* vendor pricing
+* quote release
+* project release
+* delivery signoff
+
+3. Prevent invalid state transitions.
+
+DELIVERABLE:
+Controlled governance system.
+
+---
+
+## PHASE B5 — NOTIFICATIONS & SLA
+
+GOAL:
+Prevent silent operational failures.
+
+TASKS:
+
+1. Add Slack notifications:
+
+* new lead
+* qualified lead
+* upload received
+* vendor pricing submitted
+* quote accepted
+* project created
+
+2. Add SLA timers:
+
+* vendor pricing overdue
+* quote not sent
+* upload review pending
+* project stalled
+
+3. Add escalation rules.
+
+DELIVERABLE:
+Operational visibility and alerts.
+
+---
+
+## PHASE B6 — END-TO-END VALIDATION
+
+GOAL:
+Prove full operational lifecycle.
+
+FULL FLOW:
+
+STEP 1
+↓
+LEAD CREATED
+↓
+STEP 2
+↓
+FILE UPLOAD
+↓
+VENDOR PRICING
+↓
+QUOTE
+↓
+ACCEPTANCE
+↓
+PROJECT CREATION
+
+VALIDATE:
+
+* all sheet writes
+* all IDs
+* all timestamps
+* Drive structure
+* email triggers
+* queue transitions
+* approval logic
+* duplicate handling
+* failure recovery
+
+DELIVERABLE:
+Backend approved for live operations.
+
+---
+
+## PHASE B7 — OPERATIONAL DASHBOARD
+
+GOAL:
+Operational visibility.
+
+TASKS:
+
+1. Build queue visibility.
+
+2. Add:
+
+* active leads
+* vendor queue
+* quote queue
+* active projects
+* failed workflows
+
+3. Add KPIs:
+
+* response time
+* qualification rate
+* quote conversion
+* vendor turnaround
+
+DELIVERABLE:
+MIDTS operational command center.
+
+---
+
+## FROZEN ITEMS
+
+DO NOT TOUCH:
+
+* alternate architectures
+* external databases
+* microservice ideas
+* AI orchestration systems
+* complete rewrites
+* experimental abstractions
+* unnecessary optimizations
+* non-launch-critical ideas
+
+ONLY COMPLETE THE ACTIVE SPRINTS.
