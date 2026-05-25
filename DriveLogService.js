@@ -38,6 +38,26 @@ var DriveLogService = {
       ErrorLogger.logError_('DriveLogService.log', error, { event: event });
       return { success: false, message: 'Failed to write Drive log.' };
     }
+  },
+
+  logPermissionAction: function (leadId, folder, action, actor, status, notes) {
+    try {
+      return this.log({
+        leadId: leadId || '',
+        action: action || 'Permission Action',
+        folderType: 'Permission',
+        folderName: folder && folder.getName ? folder.getName() : '',
+        folderId: folder && folder.getId ? folder.getId() : '',
+        folderUrl: folder && folder.getUrl ? folder.getUrl() : '',
+        actor: actor || 'System',
+        source: 'permission_action',
+        status: status || 'Success',
+        notes: notes || ''
+      });
+    } catch (error) {
+      ErrorLogger.logError_('DriveLogService.logPermissionAction', error, { leadId: leadId });
+      return { success: false, message: 'Failed to log permission action.' };
+    }
   }
 };
 
