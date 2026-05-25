@@ -4,6 +4,7 @@
  * WHAT THIS FILE DOES:
  * - Accepts validated Step 2 technical requirement submissions.
  * - Updates the matching lead as Step 2 completed and qualified.
+ * - Provisions the governed Drive intake folder for the lead.
  * - Triggers the controlled post-Step-2 vendor assignment dispatcher.
  * - Stores a compact technical summary in lead notes.
  * - Audits every Step 2 webhook outcome to the Step 2 Requirement Logs sheet.
@@ -14,6 +15,7 @@
  * - LeadService (LeadService.gs)
  * - VendorAssignmentDispatcherService (VendorAssignmentDispatcherService.gs)
  * - WebsiteWebhookService (WebsiteWebhookService.gs)
+ * - FileIntakeService (FileIntakeService.js)
  * - DatabaseService (DatabaseService.gs)
  * - ConfigService (Config.gs)
  * - ErrorLogger (ErrorLogger.gs)
@@ -45,7 +47,7 @@ var Step2RequirementService = {
    * PURPOSE: Process one Step 2 technical requirement POST into a qualified lead update.
    * INPUT: e (Apps Script doPost event object)
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: Updates one Leads row; may dispatch vendor pricing request; appends Step 2 and vendor assignment audit rows.
+   * SIDE EFFECTS: Updates one Leads row; provisions Drive intake folder; may dispatch vendor pricing request; appends Step 2 and vendor assignment audit rows.
    */
   handlePostEvent: function (e) {
     // ===== MAIN LOGIC =====
@@ -83,7 +85,7 @@ var Step2RequirementService = {
    * PURPOSE: Verify Step 2 webhook dependencies are ready.
    * INPUT: none
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: May create Leads and Step 2 Requirement Logs sheet headers.
+   * SIDE EFFECTS: May create Leads, File Logs, and Step 2 Requirement Logs sheet headers.
    */
   ensureStep2RequirementSetup: function () {
     // ===== MAIN LOGIC =====
@@ -96,6 +98,13 @@ var Step2RequirementService = {
       var logsResult = this.ensureStep2LogSheet_();
       if (!logsResult.success) {
         return logsResult;
+      }
+
+      if (typeof FileIntakeService !== 'undefined' && FileIntakeService.ensureFileIntakeSetup) {
+        var fileIntakeSetup = FileIntakeService.ensureFileIntakeSetup();
+        if (!fileIntakeSetup.success) {
+          return fileIntakeSetup;
+        }
       }
 
       var dispatcherResult = VendorAssignmentDispatcherService.ensureVendorAssignmentSetup();
@@ -114,6 +123,7 @@ var Step2RequirementService = {
         data: {
           requiredSetting: ConfigService.WEBSITE_WEBHOOK_TOKEN_KEY,
           auditSheet: this.STEP2_LOGS_SHEET_NAME,
+          fileIntake: 'verified',
           vendorAssignmentDispatcher: dispatcherResult
         }
       };
@@ -126,10 +136,10 @@ var Step2RequirementService = {
 
   /**
    * FUNCTION: updateLeadFromStep2Payload_
-   * PURPOSE: Internal helper to validate Step 2 payload, qualify the matching lead, and trigger vendor assignment dispatch.
+   * PURPOSE: Internal helper to validate Step 2 payload, qualify the matching lead, provision intake folder, and trigger vendor assignment dispatch.
    * INPUT: payload (object)
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: Updates one Leads row and invokes controlled vendor assignment dispatcher.
+   * SIDE EFFECTS: Updates one Leads row, creates/links Drive intake folder, and invokes controlled vendor assignment dispatcher.
    */
   updateLeadFromStep2Payload_: function (payload) {
     // ===== MAIN LOGIC =====
@@ -146,18 +156,20 @@ var Step2RequirementService = {
       }
 
       var notesResult = this.appendStep2Notes_(leadId, payload, scoreResult.data);
+      var fileIntakeResult = this.ensureStep2IntakeFolder_(leadId);
       var vendorAssignmentResult = VendorAssignmentDispatcherService.dispatchAfterStep2(leadId, {
         source: 'Step2RequirementService.updateLeadFromStep2Payload_'
       });
       return {
         success: true,
-        message: 'Step 2 requirement submitted and lead qualified.',
+        message: 'Step 2 requirement submitted, lead qualified, and intake folder checked.',
         data: {
           leadId: leadId,
           leadScore: scoreResult.data.leadScore,
           highValueFlag: scoreResult.data.highValueFlag,
           qualificationStatus: 'Qualified',
           notesUpdate: notesResult,
+          fileIntake: fileIntakeResult,
           vendorAssignment: vendorAssignmentResult
         }
       };
@@ -243,6 +255,103 @@ var Step2RequirementService = {
       // ===== ERROR HANDLING =====
       ErrorLogger.logError_('Step2RequirementService.appendStep2Notes_', error, { leadId: leadId });
       return { success: false, message: 'Failed to append Step 2 notes.' };
+    }
+  },
+
+  /**
+   * FUNCTION: ensureStep2IntakeFolder_
+   * PURPOSE: Create/link the governed Drive intake folder during Step 2, even before files arrive.
+   * INPUT: leadId (string)
+   * OUTPUT: { success: boolean, message: string, data?: object }
+   * SIDE EFFECTS: Creates Drive folders, updates Leads linkage fields, and appends a File Logs row.
+   */
+  ensureStep2IntakeFolder_: function (leadId) {
+    // ===== MAIN LOGIC =====
+    try {
+      if (typeof FileIntakeService === 'undefined') {
+        return { success: false, message: 'FileIntakeService is not available.' };
+      }
+
+      var lead = FileIntakeService.getLeadRow_(leadId);
+      if (!lead.success) {
+        if (FileIntakeService.logFileAttempt_) {
+          FileIntakeService.logFileAttempt_('', '', leadId, '', '', '', 0, '', '', 'step2', 'Rejected', 'Could not provision intake folder because lead linkage failed.');
+        }
+        return lead;
+      }
+
+      var folderResult = FileIntakeService.ensureLeadIntakeFolders_(leadId, lead.data.company);
+      if (!folderResult.success) {
+        if (FileIntakeService.logFileAttempt_) {
+          FileIntakeService.logFileAttempt_('', '', leadId, '', '', '', 0, '', '', 'step2', 'Rejected', folderResult.message);
+        }
+        return folderResult;
+      }
+
+      this.updateLeadIntakeFolderLink_(lead.data.row, folderResult.data.leadFolderId, folderResult.data.leadFolderUrl);
+      if (FileIntakeService.logFileAttempt_) {
+        FileIntakeService.logFileAttempt_(
+          UtilsService.createSequentialId_('LOG'),
+          new Date(),
+          leadId,
+          '',
+          '',
+          '',
+          0,
+          '',
+          folderResult.data.leadFolderId,
+          'step2',
+          'Folder Ready',
+          'Lead intake folder provisioned from Step 2 requirement submission.'
+        );
+      }
+
+      return {
+        success: true,
+        message: 'Step 2 intake folder provisioned.',
+        data: {
+          leadId: leadId,
+          leadIntakeFolderId: folderResult.data.leadFolderId,
+          leadIntakeFolderUrl: folderResult.data.leadFolderUrl,
+          rawFolderId: folderResult.data.rawFolderId
+        }
+      };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('Step2RequirementService.ensureStep2IntakeFolder_', error, { leadId: leadId });
+      if (typeof FileIntakeService !== 'undefined' && FileIntakeService.logFileAttempt_) {
+        FileIntakeService.logFileAttempt_('', '', leadId, '', '', '', 0, '', '', 'step2', 'Rejected', 'Unhandled exception while provisioning Step 2 intake folder.');
+      }
+      return { success: false, message: 'Failed to provision Step 2 intake folder.' };
+    }
+  },
+
+  /**
+   * FUNCTION: updateLeadIntakeFolderLink_
+   * PURPOSE: Store intake folder metadata without marking the lead as having files.
+   * INPUT: rowNumber (number), folderId (string), folderUrl (string)
+   * OUTPUT: { success: boolean, message: string }
+   * SIDE EFFECTS: Updates Lead intake folder columns.
+   */
+  updateLeadIntakeFolderLink_: function (rowNumber, folderId, folderUrl) {
+    // ===== MAIN LOGIC =====
+    try {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.LEADS_SHEET_NAME);
+      var currentFileCount = Number(sheet.getRange(rowNumber, 23).getValue() || 0);
+      sheet.getRange(rowNumber, 21, 1, 7).setValues([[
+        currentFileCount > 0 ? 'Yes' : 'No',
+        'Folder Ready',
+        currentFileCount,
+        folderId,
+        folderUrl,
+        sheet.getRange(rowNumber, 26).getValue() || '',
+        'No'
+      ]]);
+      return { success: true, message: 'Lead intake folder link updated.' };
+    } catch (error) {
+      // ===== ERROR HANDLING =====
+      ErrorLogger.logError_('Step2RequirementService.updateLeadIntakeFolderLink_', error, { rowNumber: rowNumber });
+      return { success: false, message: 'Failed to update lead intake folder link.' };
     }
   },
 
