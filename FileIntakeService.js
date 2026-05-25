@@ -18,8 +18,7 @@ var FileIntakeService = {
   MAX_FILE_COUNT: 15,
   MAX_FILE_SIZE_BYTES: 50 * 1024 * 1024,
   MAX_TOTAL_BYTES: 250 * 1024 * 1024,
-  ALLOWED_EXTENSIONS: ['step', 'stp', 'iges', 'igs', 'stl', 'dxf', 'dwg', 'sldprt', 'sldasm', 'pdf', 'docx', 'xlsx', 'csv', 'jpg', 'jpeg', 'png', 'webp', 'zip', 'rar'],
-
+  ALLOWED_EXTENSIONS: ['step', 'stp', 'iges', 'igs', 'stl', 'dxf', 'dwg', 'sldprt', 'sldasm', 'pdf', 'docx', 'xlsx', 'csv', 'txt', 'jpg', 'jpeg', 'png', 'webp', 'zip', 'rar'],
 
   isFileUploadPayload: function (input) {
     var stage = String((input && (input.formStage || input.form_stage || input.stage)) || '').trim().toLowerCase();
@@ -75,10 +74,41 @@ var FileIntakeService = {
     }
   },
 
-  ensureFileIntakeSetup: function () { try { var leads = DatabaseService.ensureLeadsSheetStructure(); if (!leads.success) return leads; var logs = DatabaseService.ensureFileLogsSheetStructure(); if (!logs.success) return logs; var settings = DatabaseService.ensureSettingsSheetStructure(); if (!settings.success) return settings; return { success: true, message: 'File intake setup verified.' }; } catch (error) { ErrorLogger.logError_('FileIntakeService.ensureFileIntakeSetup', error); return { success: false, message: 'Failed to verify File Intake setup.' }; } },
+  ensureFileIntakeSetup: function () {
+    try {
+      var leads = DatabaseService.ensureLeadsSheetStructure();
+      if (!leads.success) return leads;
+      var logs = DatabaseService.ensureFileLogsSheetStructure();
+      if (!logs.success) return logs;
+      var settings = DatabaseService.ensureSettingsSheetStructure();
+      if (!settings.success) return settings;
+
+      var root = this.getSettingValue_(ConfigService.FILE_INTAKE_ROOT_FOLDER_ID_KEY);
+      if (!root.success) return root;
+
+      var rootFolder = DriveApp.getFolderById(root.data.value);
+      var probeName = 'MIDTS_FILE_INTAKE_SETUP_PROBE';
+      var probe = this.findOrCreateChildFolder_(rootFolder, probeName);
+
+      return {
+        success: true,
+        message: 'File intake setup verified, including Drive root folder access.',
+        data: {
+          rootFolderId: rootFolder.getId(),
+          rootFolderUrl: rootFolder.getUrl(),
+          probeFolderId: probe.getId(),
+          fileLogsSheet: this.FILE_LOGS_SHEET_NAME
+        }
+      };
+    } catch (error) {
+      ErrorLogger.logError_('FileIntakeService.ensureFileIntakeSetup', error);
+      return { success: false, message: 'Failed to verify File Intake setup. Check FILE_INTAKE_ROOT_FOLDER_ID and Drive permissions.', data: { errorMessage: error && error.message ? error.message : String(error) } };
+    }
+  },
+
   parseFiles_: function (raw) { try { var parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw; if (!(parsed instanceof Array) || parsed.length === 0) return { success: false, message: 'File payload is empty.' }; return { success: true, message: 'Files parsed.', data: { files: parsed } }; } catch (error) { return { success: false, message: 'Invalid file payload JSON.' }; } },
   validateFiles_: function (files) { var total = 0; if (files.length > this.MAX_FILE_COUNT) return { success: false, message: 'Too many files. Maximum is 15.' }; for (var i=0;i<files.length;i++){var f=files[i]||{};var name=String(f.name||'').trim();var ext=(name.split('.').pop()||'').toLowerCase();var size=Number(f.size||0);if(!name||!f.base64){return {success:false,message:'File payload not complete.'};} if(this.ALLOWED_EXTENSIONS.indexOf(ext)===-1){return {success:false,message:'Unsupported file extension: '+ext};} if(size<=0||size>this.MAX_FILE_SIZE_BYTES){return {success:false,message:'File size exceeds 50MB limit.'};} total += size; if(total>this.MAX_TOTAL_BYTES){return {success:false,message:'Total payload exceeds 250MB limit.'};} try { Utilities.base64Decode(String(f.base64)); } catch (e) { return { success:false,message:'Invalid base64 payload.'}; }} return { success:true,message:'File payload validated.', data:{totalSizeBytes:total}}; },
-  ensureLeadIntakeFolders_: function (leadId, company) { try { var root = this.getSettingValue_(ConfigService.FILE_INTAKE_ROOT_FOLDER_ID_KEY); if (!root.success) return root; var rootFolder = DriveApp.getFolderById(root.data.value); var folderName = leadId + ' - ' + (String(company || '').trim() || 'Unknown'); var leadFolder = this.findOrCreateChildFolder_(rootFolder, folderName); var raw = this.findOrCreateChildFolder_(leadFolder, '01_RAW_CLIENT_UPLOADS'); this.findOrCreateChildFolder_(leadFolder, '02_INTERNAL_REVIEW'); this.findOrCreateChildFolder_(leadFolder, '03_VENDOR_SAFE_PACKAGE'); return { success:true,message:'Intake folders ready.',data:{leadFolderId:leadFolder.getId(),leadFolderUrl:leadFolder.getUrl(),rawFolderId:raw.getId()}}; } catch (error) { ErrorLogger.logError_('FileIntakeService.ensureLeadIntakeFolders_', error, { leadId: leadId }); return { success:false,message:'Failed to create lead intake folders.'}; } },
+  ensureLeadIntakeFolders_: function (leadId, company) { try { var root = this.getSettingValue_(ConfigService.FILE_INTAKE_ROOT_FOLDER_ID_KEY); if (!root.success) return root; var rootFolder = DriveApp.getFolderById(root.data.value); var folderName = leadId + ' - ' + (String(company || '').trim() || 'Unknown'); var leadFolder = this.findOrCreateChildFolder_(rootFolder, folderName); var raw = this.findOrCreateChildFolder_(leadFolder, '01_RAW_CLIENT_UPLOADS'); this.findOrCreateChildFolder_(leadFolder, '02_INTERNAL_REVIEW'); this.findOrCreateChildFolder_(leadFolder, '03_VENDOR_SAFE_PACKAGE'); return { success:true,message:'Intake folders ready.',data:{leadFolderId:leadFolder.getId(),leadFolderUrl:leadFolder.getUrl(),rawFolderId:raw.getId()}}; } catch (error) { ErrorLogger.logError_('FileIntakeService.ensureLeadIntakeFolders_', error, { leadId: leadId }); return { success:false,message:'Failed to create lead intake folders.', data: { errorMessage: error && error.message ? error.message : String(error) }}; } },
   getSettingValue_: function (key) { var map = DatabaseService.getSettingsMap(); if(!map.success) return map; var v = String(map.data.settingsMap[key] || PropertiesService.getScriptProperties().getProperty(key) || '').trim(); if(!v) return {success:false,message:'Missing required setting: '+key}; return {success:true,message:'Setting found.',data:{value:v}}; },
   getLeadRow_: function (leadId) { try { if(!leadId) return {success:false,message:'leadId is required.'}; DatabaseService.ensureLeadsSheetStructure(); var sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.LEADS_SHEET_NAME); var values=sh.getDataRange().getValues(); for(var i=1;i<values.length;i++){if(String(values[i][0]||'').trim()===leadId){return {success:true,message:'Lead found.',data:{row:i+1,company:values[i][4]}};}} return {success:false,message:'Lead not found for provided leadId.'}; } catch(error){ ErrorLogger.logError_('FileIntakeService.getLeadRow_', error, {leadId:leadId}); return {success:false,message:'Failed to read lead row.'}; } },
   updateLeadFileSummary_: function (rowNumber, incrementCount, folderId, folderUrl) { try { var sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ConfigService.LEADS_SHEET_NAME); var current=Number(sh.getRange(rowNumber,23).getValue()||0); sh.getRange(rowNumber,21,1,7).setValues([[ 'Yes', 'Stored', current + incrementCount, folderId, folderUrl, new Date(), 'No' ]]); return {success:true,message:'Lead file summary updated.'}; } catch(error){ ErrorLogger.logError_('FileIntakeService.updateLeadFileSummary_', error, {rowNumber:rowNumber}); return {success:false,message:'Failed to update lead file summary.'}; } },
