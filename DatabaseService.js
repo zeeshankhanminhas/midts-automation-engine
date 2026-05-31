@@ -192,7 +192,7 @@ var DatabaseService = {
     // ===== MAIN LOGIC =====
     try {
       // Fixed headers support consistent project tracking records.
-      var requiredHeaders = ['Project ID', 'Lead ID', 'Vendor ID', 'Quote ID', 'Created At', 'Project Status', 'Notes'];
+      var requiredHeaders = ['Project ID', 'Lead ID', 'Vendor ID', 'Quote ID', 'Created At', 'Project Status', 'Notes', 'Drive Folder ID', 'Payment Status Reference', 'Created From'];
       return this.ensureSheetAndHeaders_(ConfigService.PROJECTS_SHEET_NAME, requiredHeaders);
     } catch (error) {
       // ===== ERROR HANDLING =====
