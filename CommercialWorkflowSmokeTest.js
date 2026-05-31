@@ -13,8 +13,6 @@
  * - QuoteService (QuoteService.gs)
  * - ProjectService (ProjectService.gs)
  * - PaymentService (PaymentService.gs)
- * - DriveService (DriveService.gs)
- * - DriveLogService (DriveLogService.gs)
  * - DatabaseService (DatabaseService.gs)
  * - UtilsService (Utils.gs)
  * - ErrorLogger (ErrorLogger.gs)
@@ -23,7 +21,7 @@
 /**
  * FUNCTION: runCommercialWorkflowSmokeTest
  * PURPOSE: Validate the full MIDTS commercial spine with synthetic data and test-mode email suppression by default.
- * INPUT: options (object, optional: TEST_MODE boolean, sendEmails boolean, createDriveFolder boolean)
+ * INPUT: options (object, optional: TEST_MODE boolean, sendEmails boolean)
  * OUTPUT: { success: boolean, message: string, data?: object }
  * SIDE EFFECTS: Appends synthetic test rows to Leads, Vendors, Vendor Pricing, Quotes, Projects, Payments, and Error Logs.
  */
@@ -32,8 +30,6 @@ function runCommercialWorkflowSmokeTest(options) {
   var settings = options || {};
   var testMode = settings.TEST_MODE !== false;
   var sendEmails = testMode ? false : settings.sendEmails === true;
-  // Drive folder creation is disabled by default because it creates real Drive assets.
-  var createDriveFolder = settings.createDriveFolder === true;
   var runStamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
   var testTag = 'COMMERCIAL_SMOKE_' + runStamp;
 
@@ -146,29 +142,11 @@ function runCommercialWorkflowSmokeTest(options) {
     var project = ProjectService.createProjectFromQuote({
       quoteId: quote.data.quoteId,
       notes: testTag + ' synthetic project created after accepted quote.',
-      createDriveFolder: createDriveFolder,
-      folderName: 'MIDTS Commercial Smoke ' + runStamp,
+      createDriveFolder: false,
       paymentStatusReference: 'Not Requested'
     });
     if (!project.success) {
       return project;
-    }
-
-    var driveAudit = createDriveFolder && project.data.driveFolder
-      ? project.data.driveFolder
-      : DriveService.logDriveAccess_(
-        'SMOKE_TEST_DRIVE_SKIPPED',
-        project.data.projectId,
-        project.data.vendorId,
-        '',
-        '',
-        'Skipped',
-        testMode
-          ? 'Commercial smoke test ran in TEST_MODE; no real Drive folder or vendor access was created.'
-          : 'Commercial smoke test ran without createDriveFolder=true; Drive folder creation was skipped.'
-      );
-    if (!driveAudit.success) {
-      return driveAudit;
     }
 
     var duplicateProject = ProjectService.createProjectFromQuote(quote.data.quoteId);
@@ -259,8 +237,7 @@ function runCommercialWorkflowSmokeTest(options) {
           depositPaymentId: depositRequested.data.paymentId,
           finalCustomerPrice: quote.data.finalCustomerPrice || quote.data.clientQuoteAmount || quote.data.amount,
           depositStatus: depositReceived.data.paymentStatus,
-          readyForDelivery: readyForDelivery.data.canReleaseWork,
-          driveAuditStatus: driveAudit.message
+          readyForDelivery: readyForDelivery.data.canReleaseWork
         },
         idChecks: idChecks,
         linkChecks: linkChecks,
@@ -277,7 +254,6 @@ function runCommercialWorkflowSmokeTest(options) {
           quoteSent: quoteSent,
           quoteAccepted: quoteAccepted,
           project: project,
-          driveAudit: driveAudit,
           depositRequested: depositRequested,
           depositReceived: depositReceived,
           readyForDelivery: readyForDelivery
@@ -308,8 +284,6 @@ function commercialWorkflowEnsureSetup_() {
       DatabaseService.ensureQuotesSheetStructure(),
       DatabaseService.ensureProjectsSheetStructure(),
       PaymentService.ensurePaymentsSheetStructure(),
-      DriveService.ensureDriveAccessLogsSheetStructure(),
-      DriveLogService.ensureSheet(),
       DatabaseService.ensureErrorLogsSheetStructure(),
       DatabaseService.ensureIdCountersSheetStructure()
     ];

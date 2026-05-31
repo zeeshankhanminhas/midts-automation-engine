@@ -440,7 +440,6 @@ var DriveService = {
       this.ensureDriveAccessLogsSheetStructure();
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.DRIVE_ACCESS_LOGS_SHEET_NAME);
       var logId = UtilsService.createSequentialId_('DRIVE_LOG');
-      var timestamp = new Date();
 
       sheet.appendRow([
         logId,

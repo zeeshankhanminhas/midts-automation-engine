@@ -52,7 +52,7 @@ var DriveLogService = {
       var logId = event.id || UtilsService.createSequentialId_('DRIVE_LOG');
 
       sheet.appendRow([
-        logId,
+        event.id || UtilsService.createSequentialId_('DRIVE_LOG'),
         event.time || new Date(),
         event.leadId || '',
         event.action || '',
