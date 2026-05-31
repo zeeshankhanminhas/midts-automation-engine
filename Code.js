@@ -1,5 +1,4 @@
-/**
- * MIDTS Automation Engine
+ /* MIDTS Automation Engine
  * STAGE: 1 (Foundation bootstrap; no business workflow automation yet)
  * WHAT THIS FILE DOES:
  * - Provides entry-point and Stage 1 validation helpers.
