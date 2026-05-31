@@ -74,6 +74,7 @@ var DriveService = {
     try {
       var targetProjectId = String(projectId || '').trim();
       if (!targetProjectId) {
+        this.logDriveAccess_('CREATE_FOLDER', '', '', '', '', 'Blocked', 'projectId is required.');
         return { success: false, message: 'projectId is required.' };
       }
 
@@ -97,6 +98,7 @@ var DriveService = {
 
       var rootIdResult = this.getSettingValue_(ConfigService.ROOT_DRIVE_FOLDER_ID_KEY);
       if (!rootIdResult.success) {
+        this.logDriveAccess_('CREATE_FOLDER', targetProjectId, projectResult.data.vendorId || '', '', '', 'Blocked', rootIdResult.message);
         return rootIdResult;
       }
 
@@ -109,6 +111,7 @@ var DriveService = {
 
       var updateResult = this.updateProjectFolderId_(targetProjectId, folderId);
       if (!updateResult.success) {
+        this.logDriveAccess_('CREATE_FOLDER', targetProjectId, projectResult.data.vendorId || '', folderId, '', 'Blocked', updateResult.message);
         return updateResult;
       }
 
@@ -139,11 +142,13 @@ var DriveService = {
       var targetProjectId = String(projectId || '').trim();
       var targetVendorId = String(vendorId || '').trim();
       if (!targetProjectId || !targetVendorId) {
+        this.logDriveAccess_('GRANT_ACCESS', targetProjectId, targetVendorId, '', '', 'Blocked', 'projectId and vendorId are required.');
         return { success: false, message: 'projectId and vendorId are required.' };
       }
 
       var projectResult = this.getProjectSnapshot_(targetProjectId);
       if (!projectResult.success) {
+        this.logDriveAccess_('GRANT_ACCESS', targetProjectId, targetVendorId, '', '', 'Blocked', projectResult.message);
         return projectResult;
       }
 
@@ -163,6 +168,7 @@ var DriveService = {
       if (!folderId) {
         var folderResult = this.createProjectFolder(targetProjectId);
         if (!folderResult.success) {
+          this.logDriveAccess_('GRANT_ACCESS', targetProjectId, targetVendorId, '', vendorResult.data.email, 'Blocked', folderResult.message);
           return folderResult;
         }
         folderId = folderResult.data.folderId;
@@ -199,20 +205,24 @@ var DriveService = {
       var targetProjectId = String(projectId || '').trim();
       var targetVendorId = String(vendorId || '').trim();
       if (!targetProjectId || !targetVendorId) {
+        this.logDriveAccess_('REMOVE_ACCESS', targetProjectId, targetVendorId, '', '', 'Blocked', 'projectId and vendorId are required.');
         return { success: false, message: 'projectId and vendorId are required.' };
       }
 
       var projectResult = this.getProjectSnapshot_(targetProjectId);
       if (!projectResult.success) {
+        this.logDriveAccess_('REMOVE_ACCESS', targetProjectId, targetVendorId, '', '', 'Blocked', projectResult.message);
         return projectResult;
       }
 
       var vendorResult = this.getVendorSnapshot_(targetVendorId);
       if (!vendorResult.success) {
+        this.logDriveAccess_('REMOVE_ACCESS', targetProjectId, targetVendorId, projectResult.data.driveFolderId || '', '', 'Blocked', vendorResult.message);
         return vendorResult;
       }
 
       if (!projectResult.data.driveFolderId) {
+        this.logDriveAccess_('REMOVE_ACCESS', targetProjectId, targetVendorId, '', vendorResult.data.email || '', 'Blocked', 'Project has no Drive folder recorded.');
         return { success: false, message: 'Project has no Drive folder recorded.' };
       }
 
@@ -419,21 +429,22 @@ var DriveService = {
 
   /**
    * FUNCTION: logDriveAccess_
-   * PURPOSE: Internal helper to append a Drive access audit row.
+   * PURPOSE: Internal helper to append a Drive access audit row to both Drive audit sheets.
    * INPUT: action, projectId, vendorId, folderId, vendorEmail, result, notes
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: Appends one row to Drive Access Logs sheet.
+   * SIDE EFFECTS: Appends one row to Drive Access Logs and one matching row to Drive Logs.
    */
   logDriveAccess_: function (action, projectId, vendorId, folderId, vendorEmail, result, notes) {
     // ===== MAIN LOGIC =====
     try {
       this.ensureDriveAccessLogsSheetStructure();
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.DRIVE_ACCESS_LOGS_SHEET_NAME);
-      var logId = UtilsService.createPrefixedId_('LOG-');
+      var logId = UtilsService.createSequentialId_('DRIVE_LOG');
+      var timestamp = new Date();
 
       sheet.appendRow([
         logId,
-        new Date(),
+        timestamp,
         action,
         projectId,
         vendorId,
@@ -443,11 +454,81 @@ var DriveService = {
         notes
       ]);
 
-      return { success: true, message: 'Drive access log written.', data: { logId: logId } };
+      // Drive Access Logs are the permission audit. Drive Logs are the broader operational Drive ledger.
+      // Writing both prevents operators from missing test-mode or blocked Drive events when they inspect either tab.
+      var driveLogResult = DriveLogService.log({
+        id: logId,
+        time: timestamp,
+        action: action,
+        folderType: 'Project Folder',
+        folderId: folderId || '',
+        actor: 'DriveService',
+        source: 'DriveService.logDriveAccess_',
+        status: result || 'Logged',
+        notes: this.buildDriveLogNotes_(projectId, vendorId, vendorEmail, notes)
+      });
+
+      if (!driveLogResult.success) {
+        return driveLogResult;
+      }
+
+      return {
+        success: true,
+        message: 'Drive access log and Drive log written.',
+        data: {
+          logId: logId,
+          accessLogId: logId,
+          driveLogId: driveLogResult.data && driveLogResult.data.logId ? driveLogResult.data.logId : logId,
+          sheets: [this.DRIVE_ACCESS_LOGS_SHEET_NAME, DriveLogService.SHEET_NAME]
+        }
+      };
     } catch (error) {
       // ===== ERROR HANDLING =====
       ErrorLogger.logError_('DriveService.logDriveAccess_', error, { action: action, projectId: projectId, vendorId: vendorId });
       return { success: false, message: 'Failed to write Drive access log.' };
     }
+  },
+
+  /**
+   * FUNCTION: buildDriveLogNotes_
+   * PURPOSE: Build a compact notes string for Drive Logs without exposing Drive links.
+   * INPUT: projectId (string), vendorId (string), vendorEmail (string), notes (string)
+   * OUTPUT: string
+   * SIDE EFFECTS: none
+   */
+  buildDriveLogNotes_: function (projectId, vendorId, vendorEmail, notes) {
+    // ===== MAIN LOGIC =====
+    var parts = [];
+    if (projectId) parts.push('Project ID: ' + projectId);
+    if (vendorId) parts.push('Vendor ID: ' + vendorId);
+    if (vendorEmail) parts.push('Vendor Email: ' + vendorEmail);
+    if (notes) parts.push('Notes: ' + notes);
+    return parts.join(' | ');
   }
 };
+
+/**
+ * FUNCTION: runStage6DriveLoggingSmokeTest
+ * PURPOSE: Verify Drive logging writes to both Drive Access Logs and Drive Logs without creating Drive folders.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: Appends one synthetic test row to Drive Access Logs and Drive Logs.
+ */
+function runStage6DriveLoggingSmokeTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    return DriveService.logDriveAccess_(
+      'DRIVE_LOGGING_SMOKE_TEST',
+      'TEST-PROJECT',
+      'TEST-VENDOR',
+      '',
+      '',
+      'Success',
+      'Synthetic logging-only verification. No Drive folder or permission was created.'
+    );
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage6DriveLoggingSmokeTest', error);
+    return { success: false, message: 'Drive logging smoke test failed.' };
+  }
+}
