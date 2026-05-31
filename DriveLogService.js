@@ -18,7 +18,7 @@ var DriveLogService = {
       event = event || {};
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.SHEET_NAME);
       sheet.appendRow([
-        event.id || UtilsService.createSequentialId_('DLOG'),
+        event.id || UtilsService.createSequentialId_('DRIVE_LOG'),
         event.time || new Date(),
         event.leadId || '',
         event.action || '',

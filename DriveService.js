@@ -74,6 +74,7 @@ var DriveService = {
     try {
       var targetProjectId = String(projectId || '').trim();
       if (!targetProjectId) {
+        this.logDriveAccess_('CREATE_FOLDER', '', '', '', '', 'Blocked', 'projectId is required.');
         return { success: false, message: 'projectId is required.' };
       }
 
@@ -97,6 +98,7 @@ var DriveService = {
 
       var rootIdResult = this.getSettingValue_(ConfigService.ROOT_DRIVE_FOLDER_ID_KEY);
       if (!rootIdResult.success) {
+        this.logDriveAccess_('CREATE_FOLDER', targetProjectId, projectResult.data.vendorId || '', '', '', 'Blocked', rootIdResult.message);
         return rootIdResult;
       }
 
@@ -109,6 +111,7 @@ var DriveService = {
 
       var updateResult = this.updateProjectFolderId_(targetProjectId, folderId);
       if (!updateResult.success) {
+        this.logDriveAccess_('CREATE_FOLDER', targetProjectId, projectResult.data.vendorId || '', folderId, '', 'Blocked', updateResult.message);
         return updateResult;
       }
 
@@ -139,11 +142,13 @@ var DriveService = {
       var targetProjectId = String(projectId || '').trim();
       var targetVendorId = String(vendorId || '').trim();
       if (!targetProjectId || !targetVendorId) {
+        this.logDriveAccess_('GRANT_ACCESS', targetProjectId, targetVendorId, '', '', 'Blocked', 'projectId and vendorId are required.');
         return { success: false, message: 'projectId and vendorId are required.' };
       }
 
       var projectResult = this.getProjectSnapshot_(targetProjectId);
       if (!projectResult.success) {
+        this.logDriveAccess_('GRANT_ACCESS', targetProjectId, targetVendorId, '', '', 'Blocked', projectResult.message);
         return projectResult;
       }
 
@@ -163,6 +168,7 @@ var DriveService = {
       if (!folderId) {
         var folderResult = this.createProjectFolder(targetProjectId);
         if (!folderResult.success) {
+          this.logDriveAccess_('GRANT_ACCESS', targetProjectId, targetVendorId, '', vendorResult.data.email, 'Blocked', folderResult.message);
           return folderResult;
         }
         folderId = folderResult.data.folderId;
@@ -199,20 +205,24 @@ var DriveService = {
       var targetProjectId = String(projectId || '').trim();
       var targetVendorId = String(vendorId || '').trim();
       if (!targetProjectId || !targetVendorId) {
+        this.logDriveAccess_('REMOVE_ACCESS', targetProjectId, targetVendorId, '', '', 'Blocked', 'projectId and vendorId are required.');
         return { success: false, message: 'projectId and vendorId are required.' };
       }
 
       var projectResult = this.getProjectSnapshot_(targetProjectId);
       if (!projectResult.success) {
+        this.logDriveAccess_('REMOVE_ACCESS', targetProjectId, targetVendorId, '', '', 'Blocked', projectResult.message);
         return projectResult;
       }
 
       var vendorResult = this.getVendorSnapshot_(targetVendorId);
       if (!vendorResult.success) {
+        this.logDriveAccess_('REMOVE_ACCESS', targetProjectId, targetVendorId, projectResult.data.driveFolderId || '', '', 'Blocked', vendorResult.message);
         return vendorResult;
       }
 
       if (!projectResult.data.driveFolderId) {
+        this.logDriveAccess_('REMOVE_ACCESS', targetProjectId, targetVendorId, '', vendorResult.data.email || '', 'Blocked', 'Project has no Drive folder recorded.');
         return { success: false, message: 'Project has no Drive folder recorded.' };
       }
 
@@ -429,7 +439,7 @@ var DriveService = {
     try {
       this.ensureDriveAccessLogsSheetStructure();
       var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.DRIVE_ACCESS_LOGS_SHEET_NAME);
-      var logId = UtilsService.createPrefixedId_('LOG-');
+      var logId = UtilsService.createSequentialId_('DRIVE_LOG');
 
       sheet.appendRow([
         logId,
