@@ -8,6 +8,7 @@
  * - Google Sheets tab: Vendors
  * - DatabaseService (DatabaseService.gs)
  * - LeadService (LeadService.gs)
+ * - VendorAssignmentService (VendorAssignmentService.gs)
  * - VendorPricingService (VendorPricingService.gs)
  * - EmailService (EmailService.gs)
  * - ErrorLogger (ErrorLogger.gs)
@@ -24,122 +25,16 @@ var VendorService = {
   assignVendorToLead: function (leadId, vendorId, options) {
     // ===== MAIN LOGIC =====
     try {
-      var targetLeadId = String(leadId || '').trim();
-      var targetVendorId = String(vendorId || '').trim();
       var settings = options || {};
-      if (!targetLeadId || !targetVendorId) {
-        return { success: false, message: 'leadId and vendorId are required.' };
-      }
-
-      var gateResult = LeadService.canLeadProceedToQuote(targetLeadId);
-      if (!gateResult.success || !gateResult.data.canProceed) {
-        return { success: false, message: 'Lead is not yet qualified for vendor assignment.', data: gateResult.data || {} };
-      }
-
-      var ensureResult = DatabaseService.ensureVendorsSheetStructure();
-      if (!ensureResult.success) {
-        return ensureResult;
-      }
-
-      var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-      var sheet = spreadsheet.getSheetByName(ConfigService.VENDORS_SHEET_NAME);
-      if (!sheet) {
-        return { success: false, message: 'Vendors sheet not found.' };
-      }
-
-      var values = sheet.getDataRange().getValues();
-      for (var i = 1; i < values.length; i++) {
-        if (String(values[i][0] || '').trim() === targetVendorId) {
-          var vendorName = String(values[i][1] || '').trim();
-          var vendorEmail = String(values[i][2] || '').trim();
-          var ndaSigned = String(values[i][3] || '').trim();
-          var idVerified = String(values[i][4] || '').trim();
-          var approvedStatus = String(values[i][5] || '').trim();
-
-          // Vendor assignment allowed only after NDA, ID verification, and approval.
-          var eligible = ndaSigned === 'Yes' && idVerified === 'Yes' && approvedStatus === 'Approved';
-          if (!eligible) {
-            return {
-              success: false,
-              message: 'Vendor is not eligible for assignment.',
-              data: { vendorId: targetVendorId, ndaSigned: ndaSigned, idVerified: idVerified, approvedStatus: approvedStatus }
-            };
-          }
-
-          var assignedLeadIds = String(values[i][6] || '').trim();
-          var assignedSet = assignedLeadIds ? assignedLeadIds.split(',').map(function (item) { return item.trim(); }) : [];
-          if (assignedSet.indexOf(targetLeadId) === -1) {
-            assignedSet.push(targetLeadId);
-          }
-          sheet.getRange(i + 1, 7).setValue(assignedSet.join(', '));
-
-          var dispatchRecord = null;
-          var emailResult = null;
-          if (settings.sendEmail !== false) {
-            if (!vendorEmail) {
-              var missingEmail = { success: false, message: 'Vendor email is required before pricing request dispatch.' };
-              this.logVendorPricingDispatchAttempt_('Dispatch blocked: missing email', missingEmail, targetLeadId, targetVendorId, vendorEmail);
-              return missingEmail;
-            }
-
-            var duplicateCheck = VendorPricingService.hasActivePricingRequestForLeadVendor(targetLeadId, targetVendorId);
-            if (!duplicateCheck.success) {
-              this.logVendorPricingDispatchAttempt_('Dispatch blocked: duplicate check failed', duplicateCheck, targetLeadId, targetVendorId, vendorEmail);
-              return duplicateCheck;
-            }
-            if (duplicateCheck.data.hasActiveRequest) {
-              var duplicateBlocked = {
-                success: false,
-                message: 'Active vendor pricing request already exists for this lead/vendor pair.',
-                data: duplicateCheck.data
-              };
-              this.logVendorPricingDispatchAttempt_('Dispatch blocked: duplicate active request', duplicateBlocked, targetLeadId, targetVendorId, vendorEmail);
-              return duplicateBlocked;
-            }
-
-            dispatchRecord = VendorPricingService.createVendorPricingDispatchRecord({
-              leadId: targetLeadId,
-              vendorId: targetVendorId,
-              vendorName: vendorName,
-              vendorEmail: vendorEmail,
-              currency: 'GBP',
-              eta: '',
-              notes: 'Pricing request dispatch initiated by vendor assignment.'
-            });
-            if (!dispatchRecord.success) {
-              this.logVendorPricingDispatchAttempt_('Dispatch blocked: record creation failed', dispatchRecord, targetLeadId, targetVendorId, vendorEmail);
-              return dispatchRecord;
-            }
-
-            emailResult = this.sendVendorPricingRequest_(targetLeadId, {
-              vendorId: targetVendorId,
-              vendorName: vendorName,
-              vendorEmail: vendorEmail
-            });
-            if (dispatchRecord && dispatchRecord.data && dispatchRecord.data.vendorPricingId) {
-              emailResult.data = emailResult.data || {};
-              emailResult.data.vendorPricingId = dispatchRecord.data.vendorPricingId;
-            }
-            this.logVendorPricingDispatchAttempt_(emailResult.success ? 'Dispatch email sent' : 'Dispatch email failed', emailResult, targetLeadId, targetVendorId, vendorEmail);
-          }
-
-          return {
-            success: true,
-            message: emailResult && !emailResult.success
-              ? 'Vendor assigned to lead successfully, but vendor email was not sent.'
-              : 'Vendor assigned to lead successfully.',
-            data: {
-              leadId: targetLeadId,
-              vendorId: targetVendorId,
-              dispatchRecord: dispatchRecord,
-              dispatchTimestamp: dispatchRecord && dispatchRecord.data ? dispatchRecord.data.dispatchedAt : '',
-              emailNotification: emailResult
-            }
-          };
-        }
-      }
-
-      return { success: false, message: 'Vendor not found for provided vendorId.' };
+      // Delegate to the dedicated assignment workflow so existing callers keep using
+      // VendorService while the lead/vendor/pricing updates remain centralized.
+      return VendorAssignmentService.assignVendorToLead(leadId, vendorId, {
+        sendEmail: settings.sendEmail,
+        // Preserve the historic VendorService behavior: assignment can succeed even
+        // when an external email dependency is not configured, while the email
+        // failure is still logged by VendorAssignmentService.
+        requireEmailSuccess: false
+      });
     } catch (error) {
       // ===== ERROR HANDLING =====
       ErrorLogger.logError_('VendorService.assignVendorToLead', error, { leadId: leadId, vendorId: vendorId });

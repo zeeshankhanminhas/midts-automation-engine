@@ -111,7 +111,7 @@ var DatabaseService = {
     // ===== MAIN LOGIC =====
     try {
       // Fixed Leads headers support consistent append-only lead capture.
-      var requiredHeaders = ['Lead ID', 'Created At', 'Full Name', 'Email', 'Company', 'Project Type', 'Status', 'Source', 'Notes', 'Step 1 Completed At', 'Step 2 Completed At', 'Qualification Status', 'Lead Score', 'High Value Flag', 'Reminder 2h Sent At', 'Reminder 24h Sent At', 'Reminder 72h Sent At', 'Last Reminder Stage', 'Nurture State', 'Reminder Status', 'Has Files', 'File Intake Status', 'File Count', 'Lead Intake Folder ID', 'Lead Intake Folder URL', 'Last File Upload At', 'Vendor Safe Package Ready'];
+      var requiredHeaders = ['Lead ID', 'Created At', 'Full Name', 'Email', 'Company', 'Project Type', 'Status', 'Source', 'Notes', 'Step 1 Completed At', 'Step 2 Completed At', 'Qualification Status', 'Lead Score', 'High Value Flag', 'Reminder 2h Sent At', 'Reminder 24h Sent At', 'Reminder 72h Sent At', 'Last Reminder Stage', 'Nurture State', 'Reminder Status', 'Has Files', 'File Intake Status', 'File Count', 'Lead Intake Folder ID', 'Lead Intake Folder URL', 'Last File Upload At', 'Vendor Safe Package Ready', 'Assigned Vendor ID', 'Assigned Vendor Status', 'Vendor Assigned At', 'Vendor Pricing Status'];
       return this.ensureSheetAndHeaders_(ConfigService.LEADS_SHEET_NAME, requiredHeaders);
     } catch (error) {
       // ===== ERROR HANDLING =====
