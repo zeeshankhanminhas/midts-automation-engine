@@ -429,10 +429,10 @@ var DriveService = {
 
   /**
    * FUNCTION: logDriveAccess_
-   * PURPOSE: Internal helper to append a Drive access audit row.
+   * PURPOSE: Internal helper to append a Drive access audit row to both Drive audit sheets.
    * INPUT: action, projectId, vendorId, folderId, vendorEmail, result, notes
    * OUTPUT: { success: boolean, message: string, data?: object }
-   * SIDE EFFECTS: Appends one row to Drive Access Logs sheet.
+   * SIDE EFFECTS: Appends one row to Drive Access Logs and one matching row to Drive Logs.
    */
   logDriveAccess_: function (action, projectId, vendorId, folderId, vendorEmail, result, notes) {
     // ===== MAIN LOGIC =====
@@ -443,7 +443,7 @@ var DriveService = {
 
       sheet.appendRow([
         logId,
-        new Date(),
+        timestamp,
         action,
         projectId,
         vendorId,
@@ -453,11 +453,81 @@ var DriveService = {
         notes
       ]);
 
-      return { success: true, message: 'Drive access log written.', data: { logId: logId } };
+      // Drive Access Logs are the permission audit. Drive Logs are the broader operational Drive ledger.
+      // Writing both prevents operators from missing test-mode or blocked Drive events when they inspect either tab.
+      var driveLogResult = DriveLogService.log({
+        id: logId,
+        time: timestamp,
+        action: action,
+        folderType: 'Project Folder',
+        folderId: folderId || '',
+        actor: 'DriveService',
+        source: 'DriveService.logDriveAccess_',
+        status: result || 'Logged',
+        notes: this.buildDriveLogNotes_(projectId, vendorId, vendorEmail, notes)
+      });
+
+      if (!driveLogResult.success) {
+        return driveLogResult;
+      }
+
+      return {
+        success: true,
+        message: 'Drive access log and Drive log written.',
+        data: {
+          logId: logId,
+          accessLogId: logId,
+          driveLogId: driveLogResult.data && driveLogResult.data.logId ? driveLogResult.data.logId : logId,
+          sheets: [this.DRIVE_ACCESS_LOGS_SHEET_NAME, DriveLogService.SHEET_NAME]
+        }
+      };
     } catch (error) {
       // ===== ERROR HANDLING =====
       ErrorLogger.logError_('DriveService.logDriveAccess_', error, { action: action, projectId: projectId, vendorId: vendorId });
       return { success: false, message: 'Failed to write Drive access log.' };
     }
+  },
+
+  /**
+   * FUNCTION: buildDriveLogNotes_
+   * PURPOSE: Build a compact notes string for Drive Logs without exposing Drive links.
+   * INPUT: projectId (string), vendorId (string), vendorEmail (string), notes (string)
+   * OUTPUT: string
+   * SIDE EFFECTS: none
+   */
+  buildDriveLogNotes_: function (projectId, vendorId, vendorEmail, notes) {
+    // ===== MAIN LOGIC =====
+    var parts = [];
+    if (projectId) parts.push('Project ID: ' + projectId);
+    if (vendorId) parts.push('Vendor ID: ' + vendorId);
+    if (vendorEmail) parts.push('Vendor Email: ' + vendorEmail);
+    if (notes) parts.push('Notes: ' + notes);
+    return parts.join(' | ');
   }
 };
+
+/**
+ * FUNCTION: runStage6DriveLoggingSmokeTest
+ * PURPOSE: Verify Drive logging writes to both Drive Access Logs and Drive Logs without creating Drive folders.
+ * INPUT: none
+ * OUTPUT: { success: boolean, message: string, data?: object }
+ * SIDE EFFECTS: Appends one synthetic test row to Drive Access Logs and Drive Logs.
+ */
+function runStage6DriveLoggingSmokeTest() {
+  // ===== MAIN LOGIC =====
+  try {
+    return DriveService.logDriveAccess_(
+      'DRIVE_LOGGING_SMOKE_TEST',
+      'TEST-PROJECT',
+      'TEST-VENDOR',
+      '',
+      '',
+      'Success',
+      'Synthetic logging-only verification. No Drive folder or permission was created.'
+    );
+  } catch (error) {
+    // ===== ERROR HANDLING =====
+    ErrorLogger.logError_('runStage6DriveLoggingSmokeTest', error);
+    return { success: false, message: 'Drive logging smoke test failed.' };
+  }
+}
