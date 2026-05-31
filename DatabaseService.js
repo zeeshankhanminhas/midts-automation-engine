@@ -150,7 +150,7 @@ var DatabaseService = {
     // ===== MAIN LOGIC =====
     try {
       // Fixed headers preserve predictable quote records and reporting.
-      var requiredHeaders = ['Quote ID', 'Lead ID', 'Created At', 'Quote Status', 'Amount', 'Currency', 'Valid Until', 'Notes'];
+      var requiredHeaders = ['Quote ID', 'Lead ID', 'Created At', 'Quote Status', 'Amount', 'Currency', 'Valid Until', 'Notes', 'Vendor ID', 'Vendor Pricing ID', 'Vendor Cost', 'Margin Percent', 'MIDTS Profit Amount', 'Client Quote Amount', 'Created From'];
       return this.ensureSheetAndHeaders_(ConfigService.QUOTES_SHEET_NAME, requiredHeaders);
     } catch (error) {
       // ===== ERROR HANDLING =====
