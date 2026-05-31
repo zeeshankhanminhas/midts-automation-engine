@@ -7,6 +7,7 @@
  * - Google Drive root folder from Settings sheet: ROOT_DRIVE_FOLDER_ID
  * - Optional test vendor email from Settings sheet: TEST_VENDOR_EMAIL
  * - DriveService (DriveService.gs)
+ * - DriveLogService (DriveLogService.gs)
  * - LeadService (LeadService.gs)
  * - QuoteService (QuoteService.gs)
  * - VendorPricingService (VendorPricingService.gs)
@@ -20,7 +21,7 @@
  * PURPOSE: Verify Stage 6 sheet setup without creating folders or changing Drive access.
  * INPUT: none
  * OUTPUT: { success: boolean, message: string, data?: object }
- * SIDE EFFECTS: May create Drive Access Logs sheet and append Drive Folder ID header to Projects sheet.
+ * SIDE EFFECTS: May create Drive Access Logs and Drive Logs sheets, and append Drive Folder ID header to Projects sheet.
  */
 function runStage6DriveSetupValidation() {
   // ===== MAIN LOGIC =====
@@ -28,6 +29,11 @@ function runStage6DriveSetupValidation() {
     var accessLogs = DriveService.ensureDriveAccessLogsSheetStructure();
     if (!accessLogs.success) {
       return accessLogs;
+    }
+
+    var driveLogs = DriveLogService.ensureSheet();
+    if (!driveLogs.success) {
+      return driveLogs;
     }
 
     var projectMetadata = DriveService.ensureProjectDriveMetadataStructure();
@@ -38,7 +44,7 @@ function runStage6DriveSetupValidation() {
     return {
       success: true,
       message: 'Stage 6 Drive setup validation completed.',
-      data: { accessLogs: accessLogs, projectMetadata: projectMetadata }
+      data: { accessLogs: accessLogs, driveLogs: driveLogs, projectMetadata: projectMetadata }
     };
   } catch (error) {
     // ===== ERROR HANDLING =====
