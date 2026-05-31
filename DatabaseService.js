@@ -111,7 +111,7 @@ var DatabaseService = {
     // ===== MAIN LOGIC =====
     try {
       // Fixed Leads headers support consistent append-only lead capture.
-      var requiredHeaders = ['Lead ID', 'Created At', 'Full Name', 'Email', 'Company', 'Project Type', 'Status', 'Source', 'Notes', 'Step 1 Completed At', 'Step 2 Completed At', 'Qualification Status', 'Lead Score', 'High Value Flag', 'Reminder 2h Sent At', 'Reminder 24h Sent At', 'Reminder 72h Sent At', 'Last Reminder Stage', 'Nurture State', 'Reminder Status', 'Has Files', 'File Intake Status', 'File Count', 'Lead Intake Folder ID', 'Lead Intake Folder URL', 'Last File Upload At', 'Vendor Safe Package Ready', 'Assigned Vendor ID', 'Assigned Vendor Status', 'Vendor Assigned At', 'Vendor Pricing Status', 'Project ID', 'Project Created At'];
+      var requiredHeaders = ['Lead ID', 'Created At', 'Full Name', 'Email', 'Company', 'Project Type', 'Status', 'Source', 'Notes', 'Step 1 Completed At', 'Step 2 Completed At', 'Qualification Status', 'Lead Score', 'High Value Flag', 'Reminder 2h Sent At', 'Reminder 24h Sent At', 'Reminder 72h Sent At', 'Last Reminder Stage', 'Nurture State', 'Reminder Status', 'Has Files', 'File Intake Status', 'File Count', 'Lead Intake Folder ID', 'Lead Intake Folder URL', 'Last File Upload At', 'Vendor Safe Package Ready', 'Assigned Vendor ID', 'Assigned Vendor Status', 'Vendor Assigned At', 'Vendor Pricing Status'];
       return this.ensureSheetAndHeaders_(ConfigService.LEADS_SHEET_NAME, requiredHeaders);
     } catch (error) {
       // ===== ERROR HANDLING =====
@@ -192,7 +192,7 @@ var DatabaseService = {
     // ===== MAIN LOGIC =====
     try {
       // Fixed headers support consistent project tracking records.
-      var requiredHeaders = ['Project ID', 'Lead ID', 'Vendor ID', 'Quote ID', 'Created At', 'Project Status', 'Notes', 'Drive Folder ID', 'Payment Status Reference', 'Created From', 'Deposit Payment Status', 'Final Payment Status', 'Payment Status', 'Work Release Status', 'Payment Updated At'];
+      var requiredHeaders = ['Project ID', 'Lead ID', 'Vendor ID', 'Quote ID', 'Created At', 'Project Status', 'Notes', 'Drive Folder ID', 'Payment Status Reference', 'Created From'];
       return this.ensureSheetAndHeaders_(ConfigService.PROJECTS_SHEET_NAME, requiredHeaders);
     } catch (error) {
       // ===== ERROR HANDLING =====
