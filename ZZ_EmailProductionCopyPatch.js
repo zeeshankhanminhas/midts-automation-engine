@@ -1,7 +1,34 @@
+/**
+ * MIDTS Automation Engine
+ * STAGE: Production messaging sprint
+ * WHAT THIS FILE DOES:
+ * - Applies production-safe copy wrappers to existing EmailService functions.
+ * - Renders central ProductionTemplateService email templates before live dispatch.
+ * DEPENDENCIES:
+ * - ProductionTemplateService (ProductionTemplateService.gs)
+ * - EmailService (EmailService.gs)
+ * - ConfigService (Config.gs)
+ * - ErrorLogger (ErrorLogger.gs)
+ */
+
 var MIDTSEmailProductionCopyPatch = {
+  /**
+   * FUNCTION: apply
+   * PURPOSE: Replace selected EmailService methods with production-template-backed versions.
+   * INPUT: none
+   * OUTPUT: none
+   * SIDE EFFECTS: Mutates EmailService functions in memory.
+   */
   apply: function () {
     if (typeof EmailService === 'undefined') return;
 
+    /**
+     * FUNCTION: EmailService.sendLeadReceivedEmail
+     * PURPOSE: Send the production Step 1 enquiry received template to a client.
+     * INPUT: lead (object: email, fullName, leadId)
+     * OUTPUT: { success: boolean, message: string, data?: object }
+     * SIDE EFFECTS: Sends one Brevo email through EmailService.sendTransactionalEmail.
+     */
     EmailService.sendLeadReceivedEmail = function (lead) {
       try {
         var payload = lead || {};
@@ -20,22 +47,20 @@ var MIDTSEmailProductionCopyPatch = {
         var safeLeadReference = this.escapeHtml_(leadId);
         var safeStep2Url = this.escapeHtml_(step2Url);
 
-        var htmlContent = '<p>Hello ' + safeFullName + ',</p>' +
-          '<p>Thank you for contacting MIDTS. We have received your request and created your reference: <strong>' + safeLeadReference + '</strong>.</p>' +
-          '<p>To review the work properly, we now need the technical details for your requirement. Please complete Step 2 using the secure link below:</p>' +
-          '<p><a href="' + safeStep2Url + '">Complete Step 2 technical requirements</a></p>' +
-          '<p>Once Step 2 is submitted, our team will review the information and move the request into qualification and pricing.</p>' +
-          '<p>Kind regards,<br>MIDTS</p>';
-
-        var textContent = 'Hello ' + fullName + ', thank you for contacting MIDTS. We have received your request and created your reference: ' + leadId + '. To review the work properly, please complete Step 2 using this secure link: ' + step2Url + '. Once Step 2 is submitted, our team will review the information and move the request into qualification and pricing. Kind regards, MIDTS';
+        var render = ProductionTemplateService.renderEmailTemplate('STEP_1_ENQUIRY_RECEIVED', {
+          client_name: safeFullName,
+          lead_id: safeLeadReference,
+          step2_url: safeStep2Url
+        });
+        if (!render.success) return render;
 
         return this.sendTransactionalEmail({
           toEmail: email,
           toName: fullName,
-          subject: 'MIDTS request received - next step required',
-          htmlContent: htmlContent,
-          textContent: textContent,
-          templateKey: 'LEAD_RECEIVED_STEP_2'
+          subject: render.data.subject,
+          htmlContent: render.data.htmlContent,
+          textContent: render.data.textContent,
+          templateKey: 'STEP_1_ENQUIRY_RECEIVED'
         });
       } catch (error) {
         ErrorLogger.logError_('EmailService.sendLeadReceivedEmail', error, { lead: lead });
@@ -43,6 +68,13 @@ var MIDTSEmailProductionCopyPatch = {
       }
     };
 
+    /**
+     * FUNCTION: EmailService.getStep2ReminderTemplate_
+     * PURPOSE: Return Step 2 reminder metadata while keeping production-safe subject lines.
+     * INPUT: reminderStage (string: 2h|24h|72h)
+     * OUTPUT: { success: boolean, message: string, data?: object }
+     * SIDE EFFECTS: none
+     */
     EmailService.getStep2ReminderTemplate_ = function (reminderStage) {
       var stage = String(reminderStage || '').trim().toLowerCase();
       var templates = {
@@ -76,6 +108,13 @@ var MIDTSEmailProductionCopyPatch = {
       return { success: true, message: 'Step 2 reminder template loaded.', data: templates[stage] };
     };
 
+    /**
+     * FUNCTION: EmailService.sendStep2ReminderEmail
+     * PURPOSE: Send a production-safe Step 2 technical requirement reminder to a client.
+     * INPUT: lead (object: email, fullName, leadId), reminderStage (string)
+     * OUTPUT: { success: boolean, message: string, data?: object }
+     * SIDE EFFECTS: Sends one Brevo email through EmailService.sendTransactionalEmail.
+     */
     EmailService.sendStep2ReminderEmail = function (lead, reminderStage) {
       try {
         var payload = lead || {};
@@ -97,21 +136,19 @@ var MIDTSEmailProductionCopyPatch = {
         var safeStep2Url = this.escapeHtml_(step2Url);
         var safeLeadId = this.escapeHtml_(leadId);
 
-        var htmlContent = '<p>Hello ' + safeFullName + ',</p>' +
-          '<p>' + this.escapeHtml_(template.data.htmlIntro) + '</p>' +
-          '<p><a href="' + safeStep2Url + '">Complete Step 2 technical requirements</a></p>' +
-          '<p>Reference: <strong>' + safeLeadId + '</strong></p>' +
-          '<p>' + this.escapeHtml_(template.data.htmlOutro) + '</p>' +
-          '<p>Kind regards,<br>MIDTS</p>';
-
-        var textContent = 'Hello ' + fullName + ', ' + template.data.textIntro + ' Complete Step 2 here: ' + step2Url + '. Reference: ' + leadId + '. ' + template.data.textOutro + ' Kind regards, MIDTS';
+        var render = ProductionTemplateService.renderEmailTemplate('STEP_2_TECHNICAL_REQUIREMENT_REQUEST', {
+          client_name: safeFullName,
+          lead_id: safeLeadId,
+          step2_url: safeStep2Url
+        });
+        if (!render.success) return render;
 
         return this.sendTransactionalEmail({
           toEmail: email,
           toName: fullName,
-          subject: template.data.subject,
-          htmlContent: htmlContent,
-          textContent: textContent,
+          subject: render.data.subject,
+          htmlContent: render.data.htmlContent,
+          textContent: render.data.textContent,
           templateKey: template.data.templateKey
         });
       } catch (error) {
@@ -120,6 +157,13 @@ var MIDTSEmailProductionCopyPatch = {
       }
     };
 
+    /**
+     * FUNCTION: EmailService.sendVendorPricingRequestEmail
+     * PURPOSE: Send the production vendor pricing request template to an approved vendor.
+     * INPUT: request (object: vendorEmail, vendorName, vendorId, lead)
+     * OUTPUT: { success: boolean, message: string, data?: object }
+     * SIDE EFFECTS: Sends one Brevo email through EmailService.sendTransactionalEmail.
+     */
     EmailService.sendVendorPricingRequestEmail = function (request) {
       try {
         var payload = request || {};
@@ -142,26 +186,23 @@ var MIDTSEmailProductionCopyPatch = {
         var qualificationStatus = String(lead.qualificationStatus || 'Qualified').trim();
         var safePricingUrl = this.escapeHtml_(pricingUrl);
 
-        var htmlContent = '<p>Hello ' + this.escapeHtml_(vendorName) + ',</p>' +
-          '<p>MIDTS has assigned a qualified request to you for pricing review.</p>' +
-          '<p>Please review the summary below and submit your cost, estimated turnaround, assumptions, and any exclusions through the secure pricing form.</p>' +
-          '<p><strong>Lead reference:</strong> ' + this.escapeHtml_(leadId) + '</p>' +
-          '<p><strong>Company:</strong> ' + this.escapeHtml_(company) + '</p>' +
-          '<p><strong>Project type:</strong> ' + this.escapeHtml_(projectType) + '</p>' +
-          '<p><strong>Qualification status:</strong> ' + this.escapeHtml_(qualificationStatus) + '</p>' +
-          '<p><strong>Project details:</strong><br>' + this.escapeHtml_(notes).replace(/\n/g, '<br>') + '</p>' +
-          '<p><a href="' + safePricingUrl + '">Submit vendor pricing</a></p>' +
-          '<p>This link is assigned to your vendor profile. Please do not forward it.</p>' +
-          '<p>Kind regards,<br>MIDTS</p>';
-
-        var textContent = 'Hello ' + vendorName + ', MIDTS has assigned a qualified request to you for pricing review. Please review the summary and submit your cost, estimated turnaround, assumptions, and any exclusions through the secure pricing form. Lead reference: ' + leadId + '. Company: ' + company + '. Project type: ' + projectType + '. Qualification status: ' + qualificationStatus + '. Project details: ' + notes + '. Submit vendor pricing here: ' + pricingUrl + '. This link is assigned to your vendor profile. Please do not forward it. Kind regards, MIDTS';
+        var render = ProductionTemplateService.renderEmailTemplate('VENDOR_PRICING_REQUEST', {
+          vendor_name: this.escapeHtml_(vendorName),
+          lead_id: this.escapeHtml_(leadId),
+          company_name: this.escapeHtml_(company),
+          project_type: this.escapeHtml_(projectType),
+          qualification_status: this.escapeHtml_(qualificationStatus),
+          technical_summary: this.escapeHtml_(notes).replace(/\n/g, '<br>'),
+          vendor_pricing_url: safePricingUrl
+        });
+        if (!render.success) return render;
 
         return this.sendTransactionalEmail({
           toEmail: vendorEmail,
           toName: vendorName,
-          subject: 'MIDTS pricing request - ' + leadId,
-          htmlContent: htmlContent,
-          textContent: textContent,
+          subject: render.data.subject,
+          htmlContent: render.data.htmlContent,
+          textContent: render.data.textContent,
           templateKey: 'VENDOR_PRICING_REQUEST'
         });
       } catch (error) {

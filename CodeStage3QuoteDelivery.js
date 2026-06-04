@@ -136,37 +136,27 @@ function sendCustomerQuoteEmail_(request) {
     var safeAmount = EmailService.escapeHtml_(formattedAmount);
     var safeValidUntil = EmailService.escapeHtml_(validUntil || 'To be confirmed');
     var safeAcceptanceUrl = EmailService.escapeHtml_(acceptanceUrl);
-    var htmlAcceptanceInstruction = acceptanceUrl
-      ? '<p><a href="' + safeAcceptanceUrl + '">Accept this quote</a></p>' +
-        '<p>If the button does not open, copy and paste this link into your browser:<br>' + safeAcceptanceUrl + '</p>'
-      : '<p>To accept this quote, reply to this email confirming the quote reference. MIDTS will record acceptance before project creation.</p>';
-    var textAcceptanceInstruction = acceptanceUrl
-      ? 'To accept this quote, open this link: ' + acceptanceUrl + '. '
-      : 'To accept this quote, reply to this email confirming the quote reference. MIDTS will record acceptance before project creation.';
-
-    var htmlContent = '<p>Hello ' + safeName + ',</p>' +
-      '<p>Your MIDTS quote is ready for review.</p>' +
-      '<p><strong>Quote reference:</strong> ' + safeQuoteId + '</p>' +
-      '<p><strong>Lead reference:</strong> ' + safeLeadId + '</p>' +
-      '<p><strong>Company:</strong> ' + safeCompany + '</p>' +
-      '<p><strong>Project type:</strong> ' + safeProjectType + '</p>' +
-      '<p><strong>Quote amount:</strong> ' + safeAmount + '</p>' +
-      '<p><strong>Valid until:</strong> ' + safeValidUntil + '</p>' +
-      htmlAcceptanceInstruction +
-      '<p>No payment or project work starts until acceptance is recorded and the project is created in the MIDTS workflow.</p>';
-
-    var textContent = 'Hello ' + toName + ', your MIDTS quote is ready for review. ' +
-      'Quote reference: ' + quoteId + '. Lead reference: ' + leadId + '. Company: ' + (company || 'Not specified') + '. ' +
-      'Project type: ' + projectType + '. Quote amount: ' + formattedAmount + '. Valid until: ' + (validUntil || 'To be confirmed') + '. ' +
-      textAcceptanceInstruction;
+    var render = ProductionTemplateService.renderEmailTemplate('CLIENT_QUOTE_ISSUED', {
+      client_name: safeName,
+      quote_id: safeQuoteId,
+      lead_id: safeLeadId,
+      company_name: safeCompany,
+      project_type: safeProjectType,
+      client_quote_amount: safeAmount,
+      quote_valid_until: safeValidUntil,
+      quote_acceptance_url: safeAcceptanceUrl || 'Reply to this email confirming the quote reference.'
+    });
+    if (!render.success) {
+      return render;
+    }
 
     var emailResult = EmailService.sendTransactionalEmail({
       toEmail: toEmail,
       toName: toName,
-      subject: 'MIDTS quote ready - ' + quoteId,
-      htmlContent: htmlContent,
-      textContent: textContent,
-      templateKey: 'CUSTOMER_QUOTE_READY'
+      subject: render.data.subject,
+      htmlContent: render.data.htmlContent,
+      textContent: render.data.textContent,
+      templateKey: 'CLIENT_QUOTE_ISSUED'
     });
     if (emailResult && emailResult.data) {
       emailResult.data.quoteAcceptanceLinkConfigured = Boolean(acceptanceUrl);
